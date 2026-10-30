@@ -85,7 +85,10 @@ async function start() {
 
   // Offline režim: service worker (jen na vlastní adrese aplikace, ne v náhledu)
   if ('serviceWorker' in navigator && location.protocol === 'https:' && !location.hostname.endsWith('claude.ai') && !location.hostname.endsWith('claudeusercontent.com')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(() => {});
+    // nová verze aplikace → jednou obnovit obrazovku
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
   }
 }
 

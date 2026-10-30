@@ -1,6 +1,6 @@
 // Service worker – aplikace funguje i bez internetu.
 // Při nové verzi stačí změnit CACHE; staré soubory se smažou.
-const CACHE = 'kominictvi-v0.5.0';
+const CACHE = 'kominictvi-v0.5.1';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/version.js', 'js/db.js', 'js/ui.js', 'js/settings.js', 'js/seed.js', 'js/numbering.js', 'js/lhuty.js', 'js/customers.js', 'js/catalog.js', 'js/payment.js', 'js/visit.js', 'js/pdf.js', 'js/signature.js', 'js/share.js', 'js/protocol.js', 'js/texts.js', 'js/smsqueue.js', 'js/planning.js', 'js/termin.js', 'js/mapy.js',
@@ -21,12 +21,16 @@ self.addEventListener('activate', (e) => {
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
-  // vlastní soubory aplikace: nejdřív z cache (offline), na pozadí aktualizovat
+  // vlastní soubory aplikace: s internetem vždy nejnovější verze, bez internetu z cache
   if (url.origin === location.origin) {
     e.respondWith(caches.open(CACHE).then(async (cache) => {
-      const hit = await cache.match(e.request, { ignoreSearch: true });
-      const net = fetch(e.request).then((res) => { if (res.ok) cache.put(e.request, res.clone()); return res; }).catch(() => hit);
-      return hit || net;
+      try {
+        const res = await fetch(e.request, { cache: 'no-cache' });
+        if (res.ok) cache.put(e.request, res.clone());
+        return res;
+      } catch {
+        return (await cache.match(e.request, { ignoreSearch: true })) || (await cache.match('index.html'));
+      }
     }));
     return;
   }
