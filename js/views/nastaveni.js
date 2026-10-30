@@ -1,6 +1,7 @@
 // Nastavení – sekce vlevo, obsah vpravo; změny platí od teď (vydané dokumenty se nemění)
 import { settings, saveSettings, guideSteps } from '../settings.js';
 import { signaturePad, stampFromPhoto } from '../signature.js';
+import { TEXTS } from '../texts.js';
 import { counterState } from '../numbering.js';
 import { all, restoreFromTrash } from '../db.js';
 import { resetTrialData } from '../seed.js';
@@ -12,7 +13,7 @@ const SECTIONS = [
   { id: 'cenik', label: 'Ceník', sub: (s) => `${s.cenik.kontrola.join(' / ')} · frézování ${s.cenik.frezovaniZaMetr}/m · ${s.cenik.dopravaZaKm} Kč/km` },
   { id: 'cislovani', label: 'Dokumenty a číslování', sub: () => 'šablony · číselné řady' },
   { id: 'katalog', label: 'Katalog závad', sub: () => '13 nedostatků · 12 doporučení', stage: 8 },
-  { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily', stage: 4 },
+  { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily · 10 šablon' },
   { id: 'lhuty', label: 'Lhůty a plánování', sub: (s) => `${s.lhuty.tuhaMesice} / ${s.lhuty.kondenzacniMesice} měsíců · oslovit ${s.lhuty.oslovitMesicePredem} měs. předem` },
   { id: 'finance', label: 'Finance', sub: () => 'limit paušálu · kategorie · upomínky', stage: 6 },
   { id: 'propojeni', label: 'Propojení', sub: () => 'Google · Mapy.cz · AI · banka', warn: () => true, stage: 7 },
@@ -77,6 +78,7 @@ export async function render(el, { args, go }) {
   const box = el.querySelector('#section');
   if (FIELDS[current.id]) renderForm(box, current, s);
   else if (current.id === 'cislovani') await renderNumbering(box, s);
+  else if (current.id === 'texty') renderTexts(box, s);
   else if (current.id === 'data') await renderData(box, s, () => render(el, { args, go }));
   else box.innerHTML = String(html`<div class="page-head"><h2>${current.label}</h2></div><div class="card soon" style="min-height:240px"><span class="stage">Etapa ${current.stage}</span><p>Tahle sekce se doplní v etapě ${current.stage}.</p></div>`);
 }
@@ -195,5 +197,34 @@ async function renderData(box, s, rerender) {
     await restoreFromTrash(b.dataset.restore);
     toast('Obnoveno');
     rerender();
+  }));
+}
+
+function renderTexts(box, s) {
+  const custom = s.texty || {};
+  box.innerHTML = String(html`
+    <div class="page-head"><h2>Texty pro zákazníky</h2></div>
+    <div class="note-box" style="margin-bottom:12px">Do textu se samo doplní: {osloveni} (Dobrý den, pane Nováku,) · {den} · {cas} · {obec} · {adresa} · {minut} · {posledni} · {lhuta} · {podpis}. U večerní připomínky se věta o netopení přidá jen zákazníkům s tuhými palivy.</div>
+    ${TEXTS.map((t) => html`<div class="card" style="margin-top:10px">
+      <div class="card-title"><h3>${t.label}</h3>${custom[t.id] ? html`<button class="btn small" data-reset="${t.id}">Vrátit původní</button>` : html`<span class="sub">původní znění</span>`}</div>
+      <div class="field"><textarea id="tx-${t.id}" data-text="${t.id}" rows="3">${custom[t.id] || t.text}</textarea></div>
+    </div>`)}`);
+  box.querySelectorAll('[data-text]').forEach((ta) => ta.addEventListener('change', async () => {
+    const def = TEXTS.find((t) => t.id === ta.dataset.text).text;
+    const v = ta.value.trim();
+    const texty = { ...(settings().texty || {}) };
+    if (!v || v === def) delete texty[ta.dataset.text]; else texty[ta.dataset.text] = v;
+    await saveSettings({ texty: null });
+    await saveSettings({ texty });
+    toast('Text uložen');
+    renderTexts(box, settings());
+  }));
+  box.querySelectorAll('[data-reset]').forEach((b) => b.addEventListener('click', async () => {
+    const texty = { ...(settings().texty || {}) };
+    delete texty[b.dataset.reset];
+    await saveSettings({ texty: null });
+    await saveSettings({ texty });
+    toast('Vráceno původní znění');
+    renderTexts(box, settings());
   }));
 }

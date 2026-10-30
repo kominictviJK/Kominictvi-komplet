@@ -43,6 +43,14 @@ export function buildSeed(today = new Date()) {
       objects: [object(addr('Palackého 22', 'Lipník nad Bečvou', '751 31', 'Přerov', 49.5274, 17.5862), [chimney('Komín 1', 'tuha', lastYear(25), [{ kind: 'kotel', brand: 'Atmos', kw: 25, floor: 'PP' }])])] }),
     customer({ firstName: 'Jana', lastName: 'Horáková', gender: 'f', phones: ['739 220 671'], delivery: 'whatsapp',
       objects: [object(addr('Olomoucká 19', 'Šternberk', '785 01', 'Olomouc', 49.7287, 17.3005), [chimney('Komín 1', 'plyn', lastYear(40), [{ kind: 'kotel', brand: 'Junkers', kw: 24, floor: '1. NP' }])])] }),
+    customer({ firstName: 'Pavel', lastName: 'Novotný', gender: 'm', phones: ['604 778 120'], delivery: 'whatsapp',
+      objects: [object(addr('Gen. Svobody 30', 'Uničov', '783 91', 'Olomouc', 49.7705, 17.1255), [chimney('Komín 1', 'tuha', lastYear(30), [{ kind: 'kotel', brand: 'Dakon', kw: 22, floor: 'PP' }])])] }),
+    customer({ firstName: 'Eva', lastName: 'Svobodová', gender: 'f', phones: ['731 209 554'], delivery: 'email', email: 'eva.svobodova@seznam.cz',
+      objects: [object(addr('Uničovská 12', 'Šternberk', '785 01', 'Olomouc', 49.7321, 17.2958), [chimney('Komín 1', 'plyn', lastYear(-12), [{ kind: 'kotel', brand: 'Thermona', kw: 24, floor: '1. NP' }])])] }),
+    customer({ firstName: 'Jiří', lastName: 'Malý', gender: 'm', phones: ['605 330 871'], delivery: 'tisk',
+      objects: [object(addr('Medlov 54', 'Medlov', '783 91', 'Olomouc', 49.7955, 17.0632), [chimney('Komín 1', 'tuha', lastYear(55), [{ kind: 'krbová kamna', brand: 'Haas+Sohn', kw: 7, floor: '1. NP' }])])] }),
+    customer({ firstName: 'Lenka', lastName: 'Králová', gender: 'f', phones: ['720 115 446'], delivery: 'whatsapp',
+      objects: [object(addr('Lidická 21', 'Uničov', '783 91', 'Olomouc', 49.7738, 17.1245), [chimney('Komín 1', 'plyn', lastYear(20), [{ kind: 'kotel', brand: 'Baxi', kw: 24, floor: '1. NP' }])])] }),
   ];
 
   const ap = (cust, date, block, time, order, extra = {}) => ({
@@ -61,15 +69,27 @@ export function buildSeed(today = new Date()) {
     ap(c[5], d(2), '8–10', '09:00', 2, { objectId: c[5].objects[1].id }),
   ];
 
-  return { customers: c, appointments };
+  const inquiries = [
+    { id: uid('q_'), stage: 'open', customerId: c[6].id, objectId: c[6].objects[0].id, kind: 'ostatni', prefer: 'odpoledne', note: 'Vložkování – nabídka N2026/03 odeslána, čeká na rozhodnutí', desiredDate: '', createdAt: new Date().toISOString(), trial: true },
+    { id: uid('q_'), stage: 'open', customerId: c[3].id, objectId: c[3].objects[0].id, kind: 'kontrola', prefer: 'kdykoli', note: 'Volala, chce i prohlídku kamerou', desiredDate: d(9), createdAt: new Date().toISOString(), trial: true },
+    { id: uid('q_'), stage: 'waiting', customerId: c[4].id, objectId: c[4].objects[0].id, kind: 'kontrola', prefer: 'od 14:00', note: 'Pozvánka na výjezd Hlubočky', desiredDate: d(7), invitedAt: new Date().toISOString(), createdAt: new Date().toISOString(), trial: true },
+  ];
+  const events = [
+    { id: uid('t_'), kind: 'vyjezd', date: d(7), type: 'okruzni', villages: ['Hlubočky', 'Velká Bystřice'], title: 'Okružní výjezd', trial: true, createdAt: new Date().toISOString() },
+    { id: uid('e_'), kind: 'task', date: d(0), title: 'Zavolat na obec Hnojice kvůli dni v obci', done: false, trial: true, createdAt: new Date().toISOString() },
+    { id: uid('e_'), kind: 'event', date: d(3), time: '09:00', title: 'Servis auta', note: '', trial: true, createdAt: new Date().toISOString() },
+  ];
+  return { customers: c, appointments, inquiries, events };
 }
 
 export async function seedIfEmpty() {
   const existing = await all('customers');
   if (existing.length) return false;
-  const { customers, appointments } = buildSeed();
+  const { customers, appointments, inquiries, events } = buildSeed();
   await putMany('customers', customers);
   await putMany('appointments', appointments);
+  await putMany('inquiries', inquiries);
+  await putMany('events', events);
   return true;
 }
 
@@ -85,7 +105,9 @@ export async function removeTrialData() {
 
 export async function resetTrialData() {
   await removeTrialData();
-  const { customers, appointments } = buildSeed();
+  const { customers, appointments, inquiries, events } = buildSeed();
   await putMany('customers', customers);
   await putMany('appointments', appointments);
+  await putMany('inquiries', inquiries);
+  await putMany('events', events);
 }

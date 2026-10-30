@@ -10,14 +10,16 @@ import * as zakaznici from './views/zakaznici.js';
 import * as karta from './views/karta.js';
 import * as zakaznikForm from './views/zakaznik-form.js';
 import * as navsteva from './views/navsteva.js';
+import * as poptavky from './views/poptavky.js';
+import * as kalendar from './views/kalendar.js';
 
 import { APP_VERSION } from './version.js';
 export { APP_VERSION };
 
 const MENU = [
   { id: 'dnes', label: 'Dnes', icon: 'today', view: dnes },
-  { id: 'poptavky', label: 'Poptávky', icon: 'inbox', view: soon, stage: 4 },
-  { id: 'kalendar', label: 'Kalendář', icon: 'calendar', view: soon, stage: 4 },
+  { id: 'poptavky', label: 'Poptávky', icon: 'inbox', view: poptavky },
+  { id: 'kalendar', label: 'Kalendář', icon: 'calendar', view: kalendar },
   { id: 'zakaznici', label: 'Zákazníci', icon: 'users', view: zakaznici },
   { id: 'mapa', label: 'Mapa', icon: 'map', view: soon, stage: 5 },
   { id: 'historie', label: 'Historie', icon: 'history', view: soon, stage: 6 },
