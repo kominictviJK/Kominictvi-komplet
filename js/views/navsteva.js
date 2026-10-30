@@ -337,8 +337,11 @@ function stepPayment(box, ctx) {
   `);
   const redraw = () => stepPayment(box, ctx);
   const { keep } = wire(box, ctx, redraw);
-  // celková částka se přepočítá po dopsání
-  box.querySelectorAll('[data-bind^="payment.items"]').forEach((i) => i.addEventListener('change', keep));
+  // celková částka se přepočítá hned, bez překreslení
+  box.querySelectorAll('[data-bind^="payment.items"]').forEach((i) => i.addEventListener('input', () => {
+    const tot = d.payment.items.reduce((s2, it) => s2 + (Number(String(it.qty).replace(',', '.')) || 0) * (Number(String(it.price).replace(',', '.')) || 0), 0);
+    box.querySelector('.big-total').textContent = fmtMoney(tot);
+  }));
   box.querySelectorAll('[data-price]').forEach((b) => b.addEventListener('click', async () => {
     const [i, c] = b.dataset.price.split('|').map(Number); d.payment.items[i].price = c; await saveDraft(d); keep();
   }));

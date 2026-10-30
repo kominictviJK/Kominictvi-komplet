@@ -351,3 +351,32 @@ label.chip input { accent-color: var(--bronze); }
 .hb.on { background: var(--ink); }
 .hb.on small { color: #fff; }
 .hb.on span { background: var(--gold); }
+
+/* ---------- Finance a historie ---------- */
+.kpi { display: flex; flex-direction: column; gap: 3px; }
+.kpi .label { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+.kpi .big { font-family: var(--head); font-size: 28px; font-weight: 600; line-height: 1.1; }
+.kpi.dark { background: var(--ink); color: #fff; }
+.kpi.dark .label { color: var(--gold); }
+.kpi.dark .sub { color: #D8CFC2; }
+.chart { height: 200px; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 6px; align-items: end; border-bottom: 1.5px solid var(--line-2); padding-top: 10px; }
+.cm { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr auto; gap: 2px; align-items: end; opacity: 0.6; }
+.cm.cur { opacity: 1; }
+.cm small { grid-column: 1 / 3; text-align: center; font-size: 11px; font-weight: 700; color: var(--muted); padding-top: 4px; }
+.cb { display: block; border-radius: 4px 4px 0 0; min-height: 1px; }
+.cb.in { background: #A97A1F; }
+.cb.out { background: #2F6FC0; }
+.pbar { height: 12px; border-radius: 6px; background: #EDE6DA; overflow: hidden; margin-top: 10px; }
+.pbar span { display: block; height: 12px; border-radius: 6px; }
+.pocket { background: #EEF5EF; border: 1.5px solid #C9DFCD; }
+.pocket h3 { color: var(--ok); margin-bottom: 8px; }
+.ph { position: relative; }
+.ph img { width: 120px; height: 90px; object-fit: cover; border-radius: 10px; display: block; }
+.ph .btn { position: absolute; top: 4px; right: 4px; height: 30px; padding: 0 8px; }
+.hrow { width: 100%; border: none; background: none; text-align: left; }
+.hrow.storno { opacity: 0.5; }
+.hrow.storno .hamount { text-decoration: line-through; }
+.hdate { width: 54px; font-weight: 600; color: var(--ink-2); flex-shrink: 0; }
+.hno { width: 100px; font-family: var(--head); font-size: 16px; font-weight: 600; flex-shrink: 0; }
+.hamount { font-family: var(--head); font-size: 17px; font-weight: 600; width: 100px; text-align: right; flex-shrink: 0; }
+.note-box .grow { flex-grow: 1; }

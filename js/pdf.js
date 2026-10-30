@@ -363,3 +363,153 @@ export function pdfFileName(d, customerName) {
   const safe = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
   return `${{ doklad: 'Doklad', protokol: 'Protokol-revize' }[d.kind] || 'Zprava'}-${safe(d.no)}-${safe(customerName)}.pdf`;
 }
+
+// ---------- Faktura a cenová nabídka ----------
+import qrcode from '../vendor/qrcode.mjs';
+import { spdString } from './payment.js';
+import { offerTotals, customerUnitPrice } from './finance.js';
+
+function drawQr(ctx, text, x, y, size) {
+  const qr = qrcode(0, 'M'); qr.addData(text); qr.make();
+  const n = qr.getModuleCount(); const cell = size / n;
+  ctx.rect(x - 4, y - 4, size + 8, size + 8, { color: C.white });
+  for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (qr.isDark(r, c)) ctx.rect(x + c * cell, y + r * cell, cell + 0.15, cell + 0.15, { color: C.ink });
+}
+
+function boxes(ctx, s, customer, rightTitle, extraRight = []) {
+  const colW = (W - 2 * M - 14) / 2;
+  const top = ctx.y;
+  const left = [[s.firma.jmeno, ctx.f.b, 10.5], [s.firma.adresa], [`IČO: ${s.firma.ico} · ${s.firma.dph}`], [`tel. ${s.firma.telefon} · ${s.firma.email}`]];
+  const a = customer.objects?.[0]?.address || {};
+  const right = [[displayName(customer), ctx.f.b, 10.5], ...(a.street ? [[[a.street, [a.zip, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')]] : []), ...(customer.ico ? [[`IČO: ${customer.ico}`]] : []), ...(customer.email ? [[customer.email]] : []), ...extraRight];
+  const draw = (x, title, rows, fill) => {
+    ctx.y = top + 8;
+    const h0 = ctx.y;
+    ctx.text(title, x + 10, ctx.y, { font: ctx.f.b, size: 7.5, color: C.bronze }); ctx.y += 12;
+    for (const [t, font = ctx.f.r, size = 9.5] of rows) ctx.para(t, x + 10, colW - 20, { font, size, lh: size * 1.32 });
+    return ctx.y + 8 - h0 + 8;
+  };
+  ctx.dry = true; const h1 = draw(M, 'DODAVATEL', left); const h2 = draw(M + colW + 14, rightTitle, right); ctx.dry = false;
+  const h = Math.max(h1, h2);
+  ctx.rect(M, top, colW, h, { color: C.soft });
+  if (!ctx.dry) ctx.p.drawRectangle({ x: M + colW + 14, y: H - top - h, width: colW, height: h, borderColor: C.line, borderWidth: 1.2 });
+  draw(M, 'DODAVATEL', left); draw(M + colW + 14, rightTitle, right);
+  ctx.y = top + h + 12;
+}
+
+function table(ctx, head, rows, groups) {
+  const cols = [W - 2 * M - 270, 70, 90, 110];
+  const xs = [M, M + cols[0], M + cols[0] + cols[1], M + cols[0] + cols[1] + cols[2]];
+  ctx.rect(M, ctx.y, W - 2 * M, 18, { color: C.bronze2 });
+  head.forEach((h, i) => {
+    const x = i === 0 ? xs[0] + 8 : xs[i] + cols[i] - 8 - ctx.width(h, ctx.f.b, 7.5);
+    ctx.text(h, x, ctx.y + 5, { font: ctx.f.b, size: 7.5, color: C.white });
+  });
+  ctx.y += 22;
+  const drawRow = (r) => {
+    const top = ctx.y;
+    ctx.para(r[0], xs[0] + 8, cols[0] - 12, { size: 9.5, lh: 12 });
+    if (r.sub) ctx.para(r.sub, xs[0] + 8, cols[0] - 12, { size: 8, color: C.muted, lh: 10 });
+    [r[1], r[2], r[3]].forEach((t, j) => { const i = j + 1; ctx.text(t, xs[i] + cols[i] - 8 - ctx.width(t, i === 3 ? ctx.f.b : ctx.f.r, 9.5), top, { size: 9.5, font: i === 3 ? ctx.f.b : ctx.f.r, color: i === 3 ? C.ink : C.muted }); });
+    ctx.y = Math.max(ctx.y, top + 12) + 3;
+    ctx.line(M, ctx.y, W - M, { thickness: 0.5 }); ctx.y += 4;
+  };
+  if (groups) for (const g of groups) { if (!g.rows.length) continue; ctx.text(g.title, M + 8, ctx.y, { font: ctx.f.b, size: 7.5, color: C.bronze }); ctx.y += 12; g.rows.forEach(drawRow); }
+  else rows.forEach(drawRow);
+}
+
+const kc = (n) => `${Math.round(n).toLocaleString('cs-CZ').replace(/ /g, ' ')} Kč`;
+const kcu = (n) => `${Number(n).toLocaleString('cs-CZ', { maximumFractionDigits: 2 }).replace(/ /g, ' ')} Kč`;
+
+export async function buildInvoicePdf(inv, customer, s, docs = []) {
+  const { doc, f, logo } = await setup(`Faktura ${inv.no}`);
+  const imgs = await images(doc, {}, s);
+  const header = (ctx, cont) => drawHeader(ctx, { logo, cont, title: 'FAKTURA', sub: s.firma.dph, no: { label: 'FAKTURA Č.', value: inv.no }, date: fmtDate(parseIso(inv.date)) });
+  const ctx = new Ctx(doc, f, header);
+  ctx.page();
+  boxes(ctx, s, customer, 'ODBĚRATEL');
+  // údaje
+  const facts = [['Datum vystavení', fmtDate(parseIso(inv.date))], ['Datum splatnosti', fmtDate(parseIso(inv.due))], ['Variabilní symbol', inv.vs], ['Forma úhrady', 'převodem'], ['K úhradě', kc(inv.total)]];
+  const fw = (W - 2 * M) / 5;
+  if (!ctx.dry) ctx.p.drawRectangle({ x: M, y: H - ctx.y - 34, width: W - 2 * M, height: 34, borderColor: C.line, borderWidth: 1.2 });
+  ctx.rect(M + fw * 4, ctx.y, fw, 34, { color: C.soft });
+  facts.forEach(([l, v], i) => { ctx.text(l.toUpperCase(), M + fw * i + 8, ctx.y + 6, { font: ctx.f.b, size: 6.5, color: C.bronze }); ctx.text(v, M + fw * i + 8, ctx.y + 17, { font: ctx.f.b, size: 10 }); });
+  ctx.y += 46;
+  table(ctx, ['OZNAČENÍ DODÁVKY', 'POČET', 'CENA / J.', 'CELKEM'], inv.items.map((i) => Object.assign([i.label, `${String(i.qty).replace('.', ',')} ${i.unit || 'ks'}`, kcu(i.price), kc((Number(i.qty) || 0) * (Number(i.price) || 0))], { sub: i.sub || '' })));
+  ctx.y += 8;
+  // QR a platba
+  const top = ctx.y;
+  const spd = spdString({ account: s.firma.ucet, amount: inv.total, vs: inv.vs, message: `Faktura ${inv.no}` });
+  ctx.rect(M, top, 300, 108, { color: C.soft });
+  if (spd) { drawQr(ctx, spd, M + 12, top + 12, 78); ctx.text('QR Platba', M + 30, top + 94, { font: ctx.f.b, size: 7.5, color: C.muted }); }
+  const px = M + (spd ? 104 : 12);
+  ctx.text('PLATEBNÍ ÚDAJE', px, top + 12, { font: ctx.f.b, size: 7.5, color: C.bronze });
+  ctx.text(`Číslo účtu: ${s.firma.ucet || 'doplň v Nastavení → Firma a já'}`, px, top + 26, { size: 9.5, font: ctx.f.s });
+  ctx.text(`Variabilní symbol: ${inv.vs}`, px, top + 40, { size: 9.5, font: ctx.f.s });
+  ctx.text('Způsob platby: převodem', px, top + 54, { size: 9.5 });
+  if (spd) { ctx.text('Naskenujte QR kód v bankovní aplikaci –', px, top + 72, { size: 8, color: C.muted }); ctx.text('částka, účet i VS se vyplní samy.', px, top + 82, { size: 8, color: C.muted }); }
+  const tl = 'Celkem k úhradě';
+  ctx.text(tl, W - M - ctx.width(tl, ctx.f.b, 10.5), top + 24, { font: ctx.f.b, size: 10.5 });
+  ctx.text(kc(inv.total), W - M - ctx.width(kc(inv.total), ctx.f.h, 24), top + 40, { font: ctx.f.h, size: 24, color: C.bronze });
+  const dl = `splatnost do ${fmtDate(parseIso(inv.due))}`;
+  ctx.text(dl, W - M - ctx.width(dl, ctx.f.r, 8.5), top + 72, { size: 8.5, color: C.muted });
+  ctx.y = top + 122;
+  const nos = docs.map((d) => d.no);
+  const allDoklad = docs.length && docs.every((d) => d.kind === 'doklad');
+  const txt = inv.note || (nos.length ? `Fakturuji Vám za provedené ${allDoklad ? 'kominické práce' : 'kontroly a čištění spalinových cest'}. ${nos.length === 1 ? `${allDoklad ? 'Doklad' : 'Zpráva'} č. ${nos[0]} je přiložen${allDoklad ? '' : 'a'}` : `Dokumenty č. ${nos.join(', ')} jsou přiloženy`} k této faktuře. Dodavatel není plátcem DPH.` : 'Dodavatel není plátcem DPH.');
+  ctx.para(txt, M, W - 2 * M, { size: 9.5, color: C.muted });
+  const sy = H - M - 120;
+  ctx.y = Math.max(ctx.y + 10, sy);
+  ctx.text('Fyzická osoba zapsaná v živnostenském rejstříku.', M, ctx.y + 30, { size: 8.5, color: C.muted });
+  ctx.text('Děkuji za důvěru a těším se na další spolupráci.', M, ctx.y + 42, { size: 8.5, color: C.muted });
+  stampAndSign(ctx, W - M - 150, ctx.y, imgs, `vystavil: ${s.firma.jmeno.split('–')[0].trim()}`);
+  footers(ctx, s, inv.no);
+  return new Blob([await doc.save()], { type: 'application/pdf' });
+}
+
+export async function buildOfferPdf(o, customer, s) {
+  const { doc, f, logo } = await setup(`Cenová nabídka ${o.no}`);
+  const imgs = await images(doc, {}, s);
+  const header = (ctx, cont) => drawHeader(ctx, { logo, cont, title: 'CENOVÁ NABÍDKA', sub: s.firma.slogan, no: { label: 'NABÍDKA Č.', value: o.no }, date: fmtDate(parseIso(o.date)) });
+  const ctx = new Ctx(doc, f, header);
+  ctx.page();
+  boxes(ctx, s, customer, 'PRO', [[`platnost do ${fmtDate(parseIso(o.validUntil))}`, ctx.f.b, 9.5]]);
+  ctx.text('PŘEDMĚT NABÍDKY', M, ctx.y, { font: ctx.f.b, size: 7.5, color: C.bronze }); ctx.y += 11;
+  ctx.para(o.subject || 'Kominické práce', M, W - 2 * M, { font: ctx.f.h, size: 15, lh: 19 });
+  if (o.description) { ctx.y += 2; ctx.para(o.description, M, W - 2 * M, { size: 9.5, color: C.muted, lh: 12.5 }); }
+  ctx.y += 10;
+  const grp = (g, title) => ({ title, rows: o.items.filter((i) => i.group === g).map((i) => { const up = customerUnitPrice(o, i); return [i.label, `${String(i.qty).replace('.', ',')} ${i.unit || 'ks'}`, i.unit === 'paušál' ? 'paušál' : kcu(up), kc(Math.round((Number(i.qty) || 0) * up))]; }) });
+  table(ctx, ['POLOŽKA', 'MNOŽSTVÍ', 'CENA / J.', 'CELKEM'], null, [grp('prace', 'PRÁCE'), grp('material', 'MATERIÁL'), grp('doprava', 'DOPRAVA')]);
+  const t = offerTotals(o);
+  ctx.y += 4;
+  const tl = 'Celková cena';
+  ctx.text(tl, W - M - 120 - ctx.width(tl, ctx.f.b, 10.5), ctx.y + 8, { font: ctx.f.b, size: 10.5 });
+  ctx.text(kc(t.total), W - M - ctx.width(kc(t.total), ctx.f.h, 20), ctx.y, { font: ctx.f.h, size: 20, color: C.bronze });
+  ctx.y += 26;
+  const nd = `${s.firma.dph} · cena je konečná`;
+  ctx.text(nd, W - M - ctx.width(nd, ctx.f.r, 8), ctx.y, { size: 8, color: C.muted });
+  ctx.y += 16;
+  if (o.photos?.length) {
+    ctx.block(() => {
+      ctx.text('FOTODOKUMENTACE', M, ctx.y, { font: ctx.f.b, size: 7.5, color: C.bronze }); ctx.y += 12;
+      ctx.y += 100;
+    }, 0);
+    ctx.y -= 100;
+    const pw = (W - 2 * M - 20) / 3;
+    for (let i = 0; i < Math.min(3, o.photos.length); i++) {
+      try {
+        const bytes = dataUrlBytes(o.photos[i]);
+        const img = o.photos[i].startsWith('data:image/png') ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+        const h = Math.min(92, pw * img.height / img.width); const w = h * img.width / img.height;
+        ctx.image(img, M + i * (pw + 10) + (pw - w) / 2, ctx.y, w, h);
+      } catch { /* nepodporovaný formát fotky */ }
+    }
+    ctx.y += 104;
+  }
+  const sy = Math.max(ctx.y + 10, H - M - 100);
+  ctx.y = sy;
+  ctx.para(o.terms || 'Termín realizace po dohodě, zpravidla do 3 týdnů od přijetí nabídky. Nabídku stačí potvrdit telefonicky, SMS nebo e-mailem. Rád zodpovím jakékoli dotazy.', M, 300, { size: 8.5, color: C.muted, lh: 11.5 });
+  stampAndSign(ctx, W - M - 150, sy - 8, imgs, s.firma.jmeno.split('–')[0].trim());
+  footers(ctx, s, o.no);
+  return new Blob([await doc.save()], { type: 'application/pdf' });
+}

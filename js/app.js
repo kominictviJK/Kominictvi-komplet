@@ -13,6 +13,9 @@ import * as navsteva from './views/navsteva.js';
 import * as poptavky from './views/poptavky.js';
 import * as kalendar from './views/kalendar.js';
 import * as mapa from './views/mapa.js';
+import * as historie from './views/historie.js';
+import * as finance from './views/finance.js';
+import * as nabidka from './views/nabidka.js';
 
 import { APP_VERSION } from './version.js';
 export { APP_VERSION };
@@ -23,8 +26,8 @@ const MENU = [
   { id: 'kalendar', label: 'Kalendář', icon: 'calendar', view: kalendar },
   { id: 'zakaznici', label: 'Zákazníci', icon: 'users', view: zakaznici },
   { id: 'mapa', label: 'Mapa', icon: 'map', view: mapa },
-  { id: 'historie', label: 'Historie', icon: 'history', view: soon, stage: 6 },
-  { id: 'finance', label: 'Finance', icon: 'finance', view: soon, stage: 6 },
+  { id: 'historie', label: 'Historie', icon: 'history', view: historie },
+  { id: 'finance', label: 'Finance', icon: 'finance', view: finance },
 ];
 const SETTINGS_ITEM = { id: 'nastaveni', label: 'Nastavení', icon: 'settings', view: nastaveni };
 // Podstránky bez vlastní položky v menu (zvýrazní se jejich rodič)
@@ -32,6 +35,7 @@ const SUBPAGES = [
   { id: 'karta', parent: 'zakaznici', view: karta },
   { id: 'zakaznik', parent: 'zakaznici', view: zakaznikForm },
   { id: 'navsteva', parent: 'dnes', view: navsteva },
+  { id: 'nabidka', parent: 'finance', view: nabidka },
 ];
 const ALL = [...MENU, SETTINGS_ITEM, ...SUBPAGES];
 

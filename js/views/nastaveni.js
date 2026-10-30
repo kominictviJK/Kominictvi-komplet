@@ -16,7 +16,7 @@ const SECTIONS = [
   { id: 'katalog', label: 'Katalog závad', sub: () => '13 nedostatků · 12 doporučení', stage: 8 },
   { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily · 10 šablon' },
   { id: 'lhuty', label: 'Lhůty a plánování', sub: (s) => `${s.lhuty.tuhaMesice} / ${s.lhuty.kondenzacniMesice} měsíců · oslovit ${s.lhuty.oslovitMesicePredem} měs. předem` },
-  { id: 'finance', label: 'Finance', sub: () => 'limit paušálu · kategorie · upomínky', stage: 6 },
+  { id: 'finance', label: 'Finance', sub: (s) => `paušál ${s.finance.pausalPasmo}. pásmo · upomínky ${s.finance.upominkaDny.join(' a +')} dní` },
   { id: 'propojeni', label: 'Propojení', sub: (s) => `Mapy.cz ${s.propojeni?.mapyKey ? '✓' : '–'} · Google – · AI – · banka –`, warn: () => true },
   { id: 'data', label: 'Data a bezpečnost', sub: (s) => (s.rezim.zkusebni ? 'zkušební režim · koš · zálohy' : 'koš · zálohy · Face ID'), ok: () => true },
 ];
@@ -33,6 +33,10 @@ const FIELDS = {
     ['cenik.frezovaniZaMetr', 'Frézování za metr (Kč)', '', 'num'], ['cenik.kamera', 'Prohlídka kamerou (Kč)', '0 = zadám ručně', 'num'],
     ['cenik.dopravaZaKm', 'Doprava za km (Kč)', '', 'num'], ['cenik.prirazkaMaterial', 'Přirážka na materiál (%)', '', 'num'],
     ['cenik.splatnostDni', 'Splatnost faktur (dní)', '', 'num'],
+  ],
+  finance: [
+    ['finance.pausalPasmo', 'Pásmo paušální daně (1–3)', '', 'num'],
+    ['finance.upominkaDny', 'Upomínky (dny po splatnosti)', '0, 14', 'list0'],
   ],
   lhuty: [
     ['lhuty.tuhaMesice', 'Tuhá paliva – lhůta (měsíce)', '', 'num'], ['lhuty.plynMesice', 'Plyn – lhůta (měsíce)', '', 'num'],
@@ -116,6 +120,7 @@ function renderForm(box, section, s) {
     let value = inp.value.trim();
     if (inp.dataset.type === 'num') value = Number(value.replace(',', '.')) || 0;
     if (inp.dataset.type === 'list') value = value.split(/[,;\s]+/).map(Number).filter((n) => n > 0);
+    if (inp.dataset.type === 'list0') value = value.split(/[,;\s]+/).filter((x) => x !== '').map(Number).filter((n) => n >= 0);
     await saveSettings(patchFor(inp.dataset.path, value));
     toast('Uloženo');
   }));
