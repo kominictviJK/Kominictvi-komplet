@@ -1,10 +1,10 @@
 // Service worker – aplikace funguje i bez internetu.
 // Při nové verzi stačí změnit CACHE; staré soubory se smažou.
-const CACHE = 'kominictvi-v0.1.0';
+const CACHE = 'kominictvi-v0.2.0';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/version.js', 'js/db.js', 'js/ui.js', 'js/settings.js', 'js/seed.js', 'js/numbering.js',
-  'js/views/dnes.js', 'js/views/nastaveni.js', 'js/views/soon.js',
+  'js/app.js', 'js/version.js', 'js/db.js', 'js/ui.js', 'js/settings.js', 'js/seed.js', 'js/numbering.js', 'js/lhuty.js', 'js/customers.js',
+  'js/views/dnes.js', 'js/views/nastaveni.js', 'js/views/soon.js', 'js/views/zakaznici.js', 'js/views/karta.js', 'js/views/zakaznik-form.js',
   'icons/logo.png', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png',
 ];
 

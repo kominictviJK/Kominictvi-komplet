@@ -6,6 +6,9 @@ import { html, icon, toast } from './ui.js';
 import * as dnes from './views/dnes.js';
 import * as nastaveni from './views/nastaveni.js';
 import * as soon from './views/soon.js';
+import * as zakaznici from './views/zakaznici.js';
+import * as karta from './views/karta.js';
+import * as zakaznikForm from './views/zakaznik-form.js';
 
 import { APP_VERSION } from './version.js';
 export { APP_VERSION };
@@ -14,15 +17,20 @@ const MENU = [
   { id: 'dnes', label: 'Dnes', icon: 'today', view: dnes },
   { id: 'poptavky', label: 'Poptávky', icon: 'inbox', view: soon, stage: 4 },
   { id: 'kalendar', label: 'Kalendář', icon: 'calendar', view: soon, stage: 4 },
-  { id: 'zakaznici', label: 'Zákazníci', icon: 'users', view: soon, stage: 2 },
+  { id: 'zakaznici', label: 'Zákazníci', icon: 'users', view: zakaznici },
   { id: 'mapa', label: 'Mapa', icon: 'map', view: soon, stage: 5 },
   { id: 'historie', label: 'Historie', icon: 'history', view: soon, stage: 6 },
   { id: 'finance', label: 'Finance', icon: 'finance', view: soon, stage: 6 },
 ];
 const SETTINGS_ITEM = { id: 'nastaveni', label: 'Nastavení', icon: 'settings', view: nastaveni };
-const ALL = [...MENU, SETTINGS_ITEM];
+// Podstránky bez vlastní položky v menu (zvýrazní se jejich rodič)
+const SUBPAGES = [
+  { id: 'karta', parent: 'zakaznici', view: karta },
+  { id: 'zakaznik', parent: 'zakaznici', view: zakaznikForm },
+];
+const ALL = [...MENU, SETTINGS_ITEM, ...SUBPAGES];
 
-// Adresa obrazovky: #/dnes, #/nastaveni/firma …
+// Adresa obrazovky: #dnes, #nastaveni-firma, #karta-<id> …
 function parseRoute() {
   const parts = (location.hash.replace(/^#\/?/, '') || 'dnes').split(/[-/]/);
   return { id: parts[0], args: parts.slice(1) };
@@ -45,7 +53,7 @@ function renderNav(activeId) {
 async function renderView() {
   const { id, args } = parseRoute();
   const entry = ALL.find((m) => m.id === id) || MENU[0];
-  renderNav(entry.id);
+  renderNav(entry.parent || entry.id);
   const el = document.getElementById('view');
   try {
     await entry.view.render(el, { args, entry, go });

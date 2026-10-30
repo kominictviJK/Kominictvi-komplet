@@ -28,7 +28,7 @@ export function buildSeed(today = new Date()) {
         chimney('Komín 1', 'tuha', lastYear(-3), [{ kind: 'kotel', brand: 'Viadrus Hercules', kw: 26, floor: 'PP' }]),
         chimney('Komín 2', 'tuha', lastYear(-3), [{ kind: 'krbová kamna', brand: 'Romotop', kw: 8, floor: '1. NP' }]),
       ])] }),
-    customer({ firstName: 'Petr', lastName: 'Šindelář', gender: 'm', phones: ['602 887 310', '604 112 093'], delivery: 'whatsapp', tags: ['stálý'],
+    customer({ firstName: 'Petr', lastName: 'Šindelář', gender: 'm', phones: ['602 887 310', '604 112 093'], delivery: 'whatsapp',
       objects: [object(addr('Na Výsluní 41', 'Medlov', '783 91', 'Olomouc', 49.7962, 17.0614), [chimney('Komín 1', 'tuha', lastYear(2), [{ kind: 'krbová vložka', brand: 'Kobok', kw: 10, floor: '1. NP' }])])] }),
     customer({ firstName: 'Hana', lastName: 'Zbořilová', gender: 'f', phones: ['720 330 551'], delivery: 'whatsapp', isNew: true, source: 'doporučení souseda',
       objects: [object(addr('Hlavní 112', 'Šumvald', '783 85', 'Olomouc', 49.8302, 17.1325), [chimney('Komín 1', 'plyn', null, [{ kind: 'kotel', brand: 'Vaillant ecoTEC', kw: 20, floor: '1. NP', condensing: true }], { condensing: true })])] }),

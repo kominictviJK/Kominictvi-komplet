@@ -195,3 +195,19 @@ h3 { font-size: 18px; }
 /* opravy rozložení */
 .btn { text-decoration: none; }
 .grid > .card, .today-banner > .card { margin-top: 0; }
+
+/* ---------- Zákazníci ---------- */
+.tree { display: flex; flex-direction: column; gap: 10px; }
+.tree details > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 17px; }
+.tree details > summary::-webkit-details-marker { display: none; }
+.tree details > summary::before { content: '›'; font-size: 22px; color: var(--bronze); transition: transform 0.15s; width: 14px; }
+.tree details[open] > summary::before { transform: rotate(90deg); }
+.tree-c { margin-left: 18px; border-top: 1px solid #F0EAE0; }
+.tree-s { margin: 0 0 8px 34px; }
+.tree-sn { display: block; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; padding: 8px 0 2px; }
+.form-card { margin-top: 12px; }
+.chimney-box { margin-top: 14px; padding: 14px; border-radius: 14px; background: var(--surface-2); border: 1px solid var(--line); }
+.chimney-box .chip { background: var(--surface); }
+.chimney-box .chip.on { background: var(--ink); }
+.field select { appearance: none; -webkit-appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%), linear-gradient(135deg, var(--muted) 50%, transparent 50%); background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%; background-size: 6px 6px; background-repeat: no-repeat; padding-right: 36px; }
+.grid.c4 > .field { min-width: 0; }
