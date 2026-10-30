@@ -12,6 +12,9 @@ export function podpis() {
 
 // Text k zaslané zprávě (text č. 8 z knihy aplikace)
 export function reportMessage(doc, customer) {
+  if (doc.kind === 'protokol') {
+    return `Dobrý den, v příloze posílám protokol k revizi spalinové cesty č. ${doc.no} – ${displayName(customer)}, ${customer.objects.find((o) => o.id === doc.objectId)?.address?.street || ''}. Fotodokumentaci posílám zvlášť. ${podpis()}`;
+  }
   if (doc.kind === 'doklad') {
     return `${salutation(customer)} v příloze posílám příjmový doklad č. ${doc.no} ze dne ${fmtDate(parseIso(doc.date))}. Děkuji za důvěru, ${podpis()}`;
   }
@@ -22,6 +25,7 @@ export function reportMessage(doc, customer) {
 }
 
 export function reportSubject(doc) {
+  if (doc.kind === 'protokol') return `Protokol k revizi spalinové cesty č. ${doc.no}`;
   return doc.kind === 'doklad' ? `Příjmový doklad č. ${doc.no}` : `Zpráva o kontrole a čištění komínu č. ${doc.no}`;
 }
 

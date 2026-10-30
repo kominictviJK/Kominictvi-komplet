@@ -6,6 +6,7 @@ import { paymentTotal, METHODS } from './payment.js';
 import { FUEL_LABEL } from './lhuty.js';
 import { displayName } from './customers.js';
 import { parseIso, fmtDate } from './ui.js';
+import { protocolRows, protocolDefects } from './protocol.js';
 
 const W = 595.28, H = 841.89, M = 40;
 const C = {
@@ -101,7 +102,7 @@ function drawHeader(ctx, { logo, title, sub, no, date, cont }) {
   ctx.y += 8;
 }
 
-function parties(ctx, s, customer, object) {
+function parties(ctx, s, customer, object, rightTitle = 'OBJEDNATEL') {
   const colW = (W - 2 * M - 16) / 2;
   const firma = s.firma;
   const left = [
@@ -113,7 +114,8 @@ function parties(ctx, s, customer, object) {
     [displayName(customer), ctx.f.b, 10.5],
     ...(customer.ico ? [[`IČO: ${customer.ico}`]] : []),
     ...(customer.phones?.length ? [[`tel. ${customer.phones.join(', ')}`]] : []),
-    ...(object ? [['Adresa objektu', ctx.f.r, 7.5, C.muted], [[a.street, [a.zip, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')]] : []),
+    ...(customer.email && rightTitle === 'ZADAVATEL' ? [[`e-mail: ${customer.email}`]] : []),
+    ...(object ? [['Adresa objektu', ctx.f.r, 7.5, C.muted], [[a.street, [a.zip, a.city].filter(Boolean).join(' '), rightTitle === 'ZADAVATEL' && a.district ? `okres ${a.district}` : ''].filter(Boolean).join(', ')]] : []),
   ];
   const top = ctx.y;
   const col = (x, title, rows) => {
@@ -124,7 +126,7 @@ function parties(ctx, s, customer, object) {
     return ctx.y;
   };
   const y1 = col(M, 'OPRÁVNĚNÁ OSOBA', left);
-  const y2 = col(M + colW + 16, 'OBJEDNATEL', right);
+  const y2 = col(M + colW + 16, rightTitle, right);
   ctx.y = Math.max(y1, y2) + 8;
 }
 
@@ -277,8 +279,54 @@ async function images(doc, d, s) {
   return { stamp: await emb(s.firma.razitko), sign: await emb(s.firma.podpis), payer: await emb(d.signature) };
 }
 
+function protocolBody(ctx, d, imgs) {
+  const p = d.protocol;
+  const chimney = null;
+  ctx.sectionTitle('ÚDAJE O SPALINOVÉ CESTĚ A SPOTŘEBIČI');
+  if (p.checkReportNo) { ctx.text('Číslo kontrolní zprávy', M, ctx.y, { size: 8.5, color: C.muted }); ctx.text(p.checkReportNo, M + 190, ctx.y, { font: ctx.f.s, size: 9.5 }); ctx.y += 14; }
+  for (const [l, v] of protocolRows(p, chimney)) {
+    const top = ctx.y;
+    ctx.para(l, M, 180, { size: 8.5, color: C.muted, lh: 11 });
+    const yl = ctx.y; ctx.y = top;
+    ctx.para(v, M + 190, W - 2 * M - 190, { font: ctx.f.s, size: 9.5, lh: 12 });
+    ctx.y = Math.max(ctx.y, yl) + 1.5;
+    ctx.line(M, ctx.y, W - M, { thickness: 0.4 }); ctx.y += 3;
+  }
+  ctx.y += 6;
+  ctx.sectionTitle('ZJIŠTĚNÉ NEDOSTATKY');
+  const defects = protocolDefects(p);
+  const kv = (l, v) => { const top = ctx.y; ctx.text(l, M, top, { size: 8.5, color: C.muted }); ctx.para(v, M + 190, W - 2 * M - 190, { font: ctx.f.s, size: 9.5, lh: 12 }); ctx.y = Math.max(ctx.y, top + 12) + 2; };
+  kv('Odstraněné na místě', p.fixedText || 'žádné');
+  kv('Neodstraněné na místě', defects.length ? defects.join(' · ') : 'žádné');
+  kv('Termín odstranění nedostatků', defects.length ? (p.deadline.mode === 'neprodlene' ? 'neprodleně' : p.deadline.mode === 'datum' && p.deadline.date ? `do ${fmtDate(parseIso(p.deadline.date))}` : 'nebyl stanoven') : 'nebyl stanoven');
+  ctx.y += 10;
+  // Zapsal (razítko + podpis) a podpis objednavatele
+  const top = ctx.y;
+  stampAndSign(ctx, M, top, imgs, 'zapsal: razítko a podpis');
+  if (imgs.payer) { const h = 34, w = Math.min(150, h * imgs.payer.width / imgs.payer.height); ctx.image(imgs.payer, W - M - 170, top + 8, w, w * imgs.payer.height / imgs.payer.width); }
+  ctx.line(W - M - 190, top + 48, W - M, { color: C.muted });
+  ctx.text('podpis objednavatele', W - M - 95 - ctx.width('podpis objednavatele', ctx.f.r, 7) / 2, top + 51, { size: 7, color: C.muted });
+  ctx.y = top + 64;
+}
+
 export async function buildVisitPdf(d, customer, s) {
   const object = customer.objects.find((o) => o.id === d.objectId) || customer.objects[0];
+  if (d.kind === 'protokol') {
+    const { doc, f, logo } = await setup(`Protokol ${d.no}`);
+    const imgs = await images(doc, d, s);
+    const header = (ctx, cont) => drawHeader(ctx, { logo, cont, title: 'PROTOKOL – REVIZE\nSPALINOVÉ CESTY', sub: 'podklad pro revizi spalinové cesty', no: { label: 'PROTOKOL Č.', value: d.no }, date: fmtDate(parseIso(d.date)) });
+    const ctx = new Ctx(doc, f, header);
+    ctx.page();
+    parties(ctx, s, customer, object, 'ZADAVATEL');
+    protocolBody(ctx, d, imgs);
+    const y0 = ctx.y; ctx.dry = true; receipt(ctx, d, customer, s, imgs.payer, imgs, false); const h = ctx.y - y0; ctx.y = y0; ctx.dry = false;
+    const bottom = H - M - 22;
+    if (ctx.y + h > bottom) ctx.page();
+    ctx.y = Math.max(ctx.y, bottom - h);
+    receipt(ctx, d, customer, s, imgs.payer, imgs, false);
+    footers(ctx, s, d.no);
+    return new Blob([await doc.save()], { type: 'application/pdf' });
+  }
   const isReport = d.kind !== 'doklad';
   const title = isReport ? `Zpráva ${d.no}` : `Doklad ${d.no}`;
   const { doc, f, logo } = await setup(title);
@@ -313,5 +361,5 @@ export async function buildVisitPdf(d, customer, s) {
 
 export function pdfFileName(d, customerName) {
   const safe = (t) => String(t).normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^\w-]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
-  return `${d.kind === 'doklad' ? 'Doklad' : 'Zprava'}-${safe(d.no)}-${safe(customerName)}.pdf`;
+  return `${{ doklad: 'Doklad', protokol: 'Protokol-revize' }[d.kind] || 'Zprava'}-${safe(d.no)}-${safe(customerName)}.pdf`;
 }

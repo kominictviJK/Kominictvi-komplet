@@ -5,6 +5,7 @@ import { nextVisitNumber } from './numbering.js';
 import { displayName } from './customers.js';
 import { isoDate } from './ui.js';
 import { label, DEFECTS, RECOMMENDATIONS, APPLIANCE_KINDS } from './catalog.js';
+import { emptyProtocol, protocolMissing } from './protocol.js';
 
 export const KINDS = {
   zprava: 'Zpráva o kontrole a čištění',
@@ -52,7 +53,7 @@ export async function createDraft({ customerId, objectId, appointmentId = null, 
   const obj = c.objects.find((o) => o.id === objectId) || c.objects[0];
   const last = await lastFinalDocument(c.id, obj.id);
   const prevBy = new Map((last?.chimneys || []).map((k) => [k.id, k]));
-  const chimneys = kind === 'doklad' ? [] : obj.chimneys.map((k) => chimneyFrom(k, prevBy.get(k.id)));
+  const chimneys = kind === 'zprava' ? obj.chimneys.map((k) => chimneyFrom(k, prevBy.get(k.id))) : [];
   if (sameAsLast && last) {
     // „Beze změn jako loni“ – převezme i loňský výsledek; zkontroluje se jen závěr a cena
     chimneys.forEach((k, i) => {
@@ -76,6 +77,10 @@ export async function createDraft({ customerId, objectId, appointmentId = null, 
     },
     signature: null,
   };
+  if (kind === 'protokol') {
+    draft.protocolChimneyId = obj.chimneys[0]?.id || null;
+    draft.protocol = emptyProtocol(obj.chimneys[0], last?.no || '');
+  }
   await put('documents', draft);
   return draft;
 }
@@ -104,7 +109,7 @@ export function suggestConclusion(k) {
 
 // Kontrola před podpisem – co chybí
 export function missing(d, customer) {
-  const out = [];
+  const out = d.kind === 'protokol' ? protocolMissing(d.protocol) : [];
   d.chimneys.forEach((k, i) => {
     const n = d.chimneys.length > 1 ? `${i + 1}) ` : '';
     if (!k.fuel) out.push(`${n}palivo`);
@@ -136,12 +141,27 @@ export async function finalize(draft, pdfBuilder) {
   doc.payment.paid = doc.payment.method === 'hotove' || doc.payment.method === 'qr' ? doc.payment.paid : false;
   const customer = await get('customers', doc.customerId);
   doc.customerName = displayName(customer);
-  doc.title = doc.kind === 'doklad' ? doc.purpose : `${doc.chimneys.length} ${doc.chimneys.length === 1 ? 'komín' : doc.chimneys.length < 5 ? 'komíny' : 'komínů'}`;
+  doc.title = doc.kind === 'doklad' ? doc.purpose : doc.kind === 'protokol' ? 'protokol k revizi' : `${doc.chimneys.length} ${doc.chimneys.length === 1 ? 'komín' : doc.chimneys.length < 5 ? 'komíny' : 'komínů'}`;
   doc.pdf = await pdfBuilder(doc, customer, s);
   await put('documents', doc);
 
+  // protokol: údaje z protokolu se uloží do karty (nový nebo vyvložkovaný komín)
+  if (doc.kind === 'protokol') {
+    const obj = customer.objects.find((o) => o.id === doc.objectId);
+    const ck = obj.chimneys.find((x) => x.id === doc.protocolChimneyId) || obj.chimneys[0];
+    const p = doc.protocol;
+    if (ck) {
+      const cm = (v) => (v ? String(Math.round(Number(String(v).replace(',', '.')) * 10)) : '');
+      ck.height = p.effHeight || ck.height;
+      ck.liner = { material: { 'šamotová': 'keramika', 'nerezová': 'nerez', 'plastová': 'plast' }[p.liner] || ck.liner?.material || '', materialOther: '', diameter: cm(p.linerDiameterCm) || ck.liner?.diameter || '' };
+      const a = ck.appliances?.[0] || (ck.appliances = [{}])[0];
+      a.brand = p.brand || a.brand; a.kw = p.kw || a.kw;
+      a.flue = { material: { 'ocelový': 'ocel', 'nerezový': 'nerez', 'plastový': 'plast' }[p.flue.material] || '', materialOther: '', diameter: cm(p.flue.diameterCm), length: p.flue.length, elbows: p.flue.elbows };
+      ck.revisionPrepared = doc.date;
+    }
+  }
   // karta zákazníka: poslední kontrola a technické údaje
-  if (doc.kind !== 'doklad') {
+  if (doc.kind === 'zprava') {
     const obj = customer.objects.find((o) => o.id === doc.objectId);
     for (const k of doc.chimneys) {
       let ck = obj.chimneys.find((x) => x.id === k.id);

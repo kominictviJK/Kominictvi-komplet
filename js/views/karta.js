@@ -43,7 +43,7 @@ export async function render(el, { args, go }) {
 
     <div class="card" style="margin-top:12px">
       <div class="card-title"><h3>Historie</h3><span class="sub">zprávy, protokoly, doklady, faktury</span></div>
-      ${docs.length ? docs.sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt)).map((d) => html`<a class="kv" href="#navsteva-${d.id}" style="text-decoration:none;color:inherit"><span>${fmtDate(parseIso(d.date))}</span><b style="flex-grow:1">${d.status === 'final' ? `${d.kind === 'doklad' ? 'Doklad' : 'Zpráva'} ${d.no}` : 'Rozpracovaná návštěva'}</b><span class="sub">${d.title || ''}</span>${d.status === 'final' ? '' : html`<span class="tag warn">dokončit</span>`}<span class="chev">›</span></a>`)
+      ${docs.length ? docs.sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt)).map((d) => html`<a class="kv" href="#navsteva-${d.id}" style="text-decoration:none;color:inherit"><span>${fmtDate(parseIso(d.date))}</span><b style="flex-grow:1">${d.status === 'final' ? `${{ doklad: 'Doklad', protokol: 'Protokol' }[d.kind] || 'Zpráva'} ${d.no}` : 'Rozpracovaná návštěva'}</b><span class="sub">${d.title || ''}</span>${d.status === 'final' ? '' : html`<span class="tag warn">dokončit</span>`}<span class="chev">›</span></a>`)
         : html`<p class="sub" style="margin:0">Zatím žádné dokumenty. Po první návštěvě se tu objeví zprávy a doklady.</p>`}
     </div>
 

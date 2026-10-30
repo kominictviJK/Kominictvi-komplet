@@ -15,6 +15,7 @@ import { signaturePad } from '../signature.js';
 import { shareDocument } from '../share.js';
 import { html, raw, icon, toast, modal, fmtMoney, fmtDate, parseIso } from '../ui.js';
 import { uid } from '../db.js';
+import { PURPOSES, P_FLUES, P_LINERS, CLEANING, ROOFS, CONTRACTORS } from '../protocol.js';
 
 const STEPS = [['formular', 'Zpráva'], ['platba', 'Platba'], ['podpis', 'Podpis'], ['hotovo', 'Odeslání']];
 
@@ -58,12 +59,11 @@ async function chooseTemplate(el, args, go) {
       ${last ? tile('same', 'Beze změn jako loni', `Převezme celou zprávu ${last.no}. Zkontroluješ jen závěr a cenu.`, 'accent') : ''}
       ${tile('zprava', 'Zpráva o kontrole a čištění', last ? 'Předvyplní se technický popis z minulé zprávy' : `${obj.chimneys.length} ${obj.chimneys.length === 1 ? 'komín' : 'komíny'} z karty zákazníka`)}
       ${tile('doklad', 'Jen doklad', 'Frézování, prohlídka kamerou, ostatní práce – doklad s podpisem')}
-      ${tile('protokol', 'Protokol k revizi', 'Pro revizní techničku – přijde v další části etapy', 'disabled')}
+      ${tile('protokol', 'Protokol k revizi', 'Podklad pro revizní techničku – údaje se uloží do karty')}
     </div>
   `);
   el.querySelectorAll('[data-kind]').forEach((b) => b.addEventListener('click', async () => {
     const k = b.dataset.kind;
-    if (k === 'protokol') { toast('Protokol k revizi doplním hned po zprávě.'); return; }
     const d = await createDraft({ customerId: c.id, objectId: obj.id, appointmentId: appointment?.id, kind: k === 'same' ? 'zprava' : k, sameAsLast: k === 'same' });
     if (k === 'same') d.step = 'platba';
     await saveDraft(d);
@@ -88,7 +88,7 @@ function draw(ctx) {
     <div id="step"></div>
   `);
   const box = el.querySelector('#step');
-  ({ formular: stepForm, platba: stepPayment, podpis: stepSign, hotovo: stepDone })[d.step](box, ctx);
+  ({ formular: d.kind === 'protokol' ? stepProtocol : stepForm, platba: stepPayment, podpis: stepSign, hotovo: stepDone })[d.step](box, ctx);
 }
 
 async function goStep(ctx, step) {
@@ -112,6 +112,7 @@ function wire(box, ctx, redraw) {
   const { d } = ctx;
   const save = () => saveDraft(d);
   const keep = () => { const y = ctx.el.scrollTop; redraw(); ctx.el.scrollTop = y; };
+
   box.querySelectorAll('[data-bind]').forEach((i) => i.addEventListener('input', () => { setPath(d, i.dataset.bind, i.value); save(); }));
   box.querySelectorAll('[data-set]').forEach((b) => b.addEventListener('click', () => {
     const v = JSON.parse(b.dataset.v);
@@ -245,6 +246,50 @@ function chimneyForm(k, i, total) {
     </div>`;
 }
 
+// ---------- 1b) Protokol k revizi ----------
+function stepProtocol(box, ctx) {
+  const { d, customer } = ctx;
+  const p = d.protocol;
+  const q = 'protocol';
+  const obj = customer.objects.find((o) => o.id === d.objectId) || customer.objects[0];
+  const row = (title, content) => html`<div class="frow"><span class="flabel">${title}</span><div class="fval">${content}</div></div>`;
+  const e = p.flue.elbows;
+  box.innerHTML = String(html`
+    <div class="card fcard">
+      <div class="card-title"><h2>Protokol – revize spalinové cesty</h2><span class="sub">podklad pro revizní techničku</span></div>
+      ${obj.chimneys.length > 1 ? row('Komín', html`<div class="chips">${obj.chimneys.map((k) => chipOne('protocolChimneyId', k.id, k.label, d.protocolChimneyId))}</div>`) : ''}
+      ${row('Určení revize', html`<div class="chips">${PURPOSES.map(([v, l]) => chipOne(`${q}.purpose`, v, l, p.purpose))}</div>`)}
+      ${row('Číslo kontrolní zprávy', inp(`${q}.checkReportNo`, p.checkReportNo, { ph: 'např. 5/10/2026', w: '200px' }))}
+      ${row('Spotřebič', html`<div class="inline">${inp(`${q}.brand`, p.brand, { ph: 'značka / typ', w: '280px' })}${inp(`${q}.kw`, p.kw, { ph: 'kW', mode: 'decimal', w: '90px' })}</div>`)}
+      ${row('Druh paliva', inp(`${q}.fuelText`, p.fuelText, { ph: 'dřevo, uhlí, zemní plyn…', w: '280px' }))}
+      ${row('Umístění / patro', inp(`${q}.placementText`, p.placementText, { ph: '1. NP, obývací pokoj' }))}
+      ${row('Kouřovod', html`<div class="chips">${P_FLUES.map((x) => chipOne(`${q}.flue.material`, x, x, p.flue.material))}</div>
+        <div class="inline" style="margin-top:8px">${inp(`${q}.flue.diameterCm`, p.flue.diameterCm, { ph: 'průměr cm', mode: 'decimal', w: '120px' })}${inp(`${q}.flue.length`, p.flue.length, { ph: 'délka m', mode: 'decimal', w: '110px' })}</div>
+        <div class="inline" style="margin-top:8px">${[['e90', '90°'], ['e45', '45°'], ['flex', 'flexi']].map(([key, l]) => html`<span class="counter"><button type="button" data-inc="${q}.flue.elbows.${key}|-1" aria-label="ubrat">−</button><b>${e[key] || 0}× ${l}</b><button type="button" data-inc="${q}.flue.elbows.${key}|1" aria-label="přidat">+</button></span>`)}
+        ${chipBool(`${q}.flue.elbows.none`, e.none, 'bez kolen')}<span class="sub">${elbowsText(e)}</span></div>`)}
+      ${row('Výšky a vložka', html`<div class="inline">${inp(`${q}.buildHeight`, p.buildHeight, { ph: 'stavební výška m', mode: 'decimal', w: '160px' })}${inp(`${q}.effHeight`, p.effHeight, { ph: 'účinná výška m', mode: 'decimal', w: '150px' })}${inp(`${q}.linerDiameterCm`, p.linerDiameterCm, { ph: 'průměr vložky cm', mode: 'decimal', w: '160px' })}</div>`)}
+      ${row('Vložka', html`<div class="chips">${P_LINERS.map((x) => chipOne(`${q}.liner`, x, x, p.liner))}</div>`)}
+      ${row('Čištění se provádí', html`<div class="chips">${CLEANING.map((x) => chipMany(`${q}.cleaning`, x, x, p.cleaning))}</div>`)}
+      ${row('Vybírací otvor', inp(`${q}.openingPlace`, p.openingPlace, { ph: 'kde je umístěn, např. 1. NP', w: '280px' }))}
+      ${row('Omítnutý po celé délce', html`<div class="inline">${chipOne(`${q}.plastered`, true, 'ano', p.plastered)}${chipOne(`${q}.plastered`, false, 'ne', p.plastered)}${!p.plastered ? inp(`${q}.plasteredWhere`, p.plasteredWhere, { ph: 'kde není', w: '240px' }) : ''}</div>`)}
+      ${row('Výrobce komína / vložek', inp(`${q}.manufacturer`, p.manufacturer, { ph: 'např. Schiedel' }))}
+      ${row('Zhotovitel', html`<div class="inline">${CONTRACTORS.map((x) => chipOne(`${q}.contractor`, x, x, p.contractor))}${p.contractor === 'odborná firma' ? inp(`${q}.contractorName`, p.contractorName, { ph: 'název firmy / nezjištěn', w: '260px' }) : ''}</div>`)}
+      ${row('Popis stavby', inp(`${q}.building`, p.building, { ph: 'rodinný dům', w: '280px' }))}
+      ${row('Typ střechy', html`<div class="inline">${ROOFS.map((x) => chipOne(`${q}.roof`, x, x, p.roof))}${p.roof === 'jiná' ? inp(`${q}.roofOther`, p.roofOther, { ph: 'jaká', w: '200px' }) : ''}</div>`)}
+      ${row('Vzdálenost 5 cm od hořlavých', html`<div class="inline">${chipOne(`${q}.safeDistance`, true, 'ano', p.safeDistance)}${chipOne(`${q}.safeDistance`, false, 'není', p.safeDistance)}${!p.safeDistance ? inp(`${q}.safeDistanceWhere`, p.safeDistanceWhere, { ph: 'kde', w: '240px' }) : ''}</div>`)}
+      ${row('Přívod vzduchu', inp(`${q}.airSupply`, p.airSupply, { ph: 'z místnosti, externí přívod…' }))}
+      ${row('Další ventilátor', html`<div class="inline">${chipOne(`${q}.fan`, true, 'ano', p.fan)}${chipOne(`${q}.fan`, false, 'ne', p.fan)}${p.fan ? inp(`${q}.fanWhat`, p.fanWhat, { ph: 'jaký / kde, např. digestoř', w: '260px' }) : ''}</div>`)}
+      <h3 class="fsec">Zjištěné nedostatky</h3>
+      ${row('Odstraněné na místě', inp(`${q}.fixedText`, p.fixedText, { ph: 'žádné' }))}
+      ${row('Neodstraněné', html`<div class="chips">${DEFECTS.map(([v, l]) => chipMany(`${q}.defects`, v, l, p.defects))}</div><div style="margin-top:8px">${inp(`${q}.defectOther`, p.defectOther, { ph: 'jiná závada – dopiš' })}</div>`)}
+      ${p.defects.length || p.defectOther.trim() ? row('Termín odstranění', html`<div class="inline">${chipOne(`${q}.deadline.mode`, 'neprodlene', 'neprodleně', p.deadline.mode)}${chipOne(`${q}.deadline.mode`, 'nestanoven', 'nebyl stanoven', p.deadline.mode)}${chipOne(`${q}.deadline.mode`, 'datum', 'do data', p.deadline.mode)}${p.deadline.mode === 'datum' ? inp(`${q}.deadline.date`, p.deadline.date, { type: 'date', w: '180px' }) : ''}</div>`) : ''}
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px"><button class="btn primary" data-act="next">Pokračovat na platbu ›</button></div>
+  `);
+  wire(box, ctx, () => stepProtocol(box, ctx));
+  box.querySelector('[data-act="next"]').addEventListener('click', () => goStep(ctx, 'platba'));
+}
+
 // ---------- 2) Platba ----------
 function stepPayment(box, ctx) {
   const { d } = ctx;
@@ -333,6 +378,7 @@ function stepSign(box, ctx) {
     <div class="grid c2" style="align-items:start">
       <div class="card">
         <h3 style="margin-bottom:8px">Souhrn</h3>
+        ${d.kind === 'protokol' ? html`<div class="kv"><span>Protokol k revizi</span><b>${label(PURPOSES, d.protocol.purpose) || '— určení nevybráno —'}<br><span class="sub">${d.protocol.brand}</span></b></div>` : ''}
         ${d.chimneys.map((k, i) => html`<div class="kv"><span>${d.chimneys.length > 1 ? `${i + 1}) ` : ''}${k.label}</span><span><b>${label(CONCLUSIONS, k.conclusion) || '— závěr nevybrán —'}</b><br><span class="sub">${FUEL_LABEL[k.fuel]} · ${k.appliances.map((a) => (a.kind === 'jiný' ? a.kindOther : a.kind)).join(' + ')}</span></span></div>`)}
         <div class="kv"><span>Platba</span><b>${fmtMoney(total)} · ${METHODS[d.payment.method] || '—'}</b></div>
       </div>
@@ -346,7 +392,7 @@ function stepSign(box, ctx) {
     </div>
     <div style="display:flex;justify-content:space-between;margin-top:14px">
       <button class="btn" data-act="back">‹ Zpět na platbu</button>
-      <button class="btn primary" data-act="finish">${icon('check')} Dokončit a vytvořit ${d.kind === 'doklad' ? 'doklad' : 'zprávu'}</button>
+      <button class="btn primary" data-act="finish">${icon('check')} Dokončit a vytvořit ${{ doklad: 'doklad', protokol: 'protokol' }[d.kind] || 'zprávu'}</button>
     </div>
   `);
   let pad = null;
@@ -372,7 +418,7 @@ function stepSign(box, ctx) {
       ctx.d = doc; ctx.customer = await get('customers', doc.customerId);
       ctx.d.step = 'hotovo';
       draw(ctx);
-      toast(`Hotovo – ${doc.kind === 'doklad' ? 'doklad' : 'zpráva'} č. ${doc.no}`);
+      toast(`Hotovo – č. ${doc.no}`);
     } catch (err) {
       console.error(err);
       e.target.disabled = false; e.target.textContent = 'Zkusit znovu';
@@ -390,7 +436,7 @@ function stepDone(box, ctx) {
     <div class="card done-card">
       <div class="done-head">
         <span class="done-check">${icon('check')}</span>
-        <div><h2>${d.kind === 'doklad' ? 'Doklad' : 'Zpráva'} č. ${d.no}</h2><span class="sub">${fmtDate(parseIso(d.date))} · ${fmtMoney(paymentTotal(d.payment.items))} · ${METHODS[d.payment.method]}</span></div>
+        <div><h2>${{ doklad: 'Doklad', protokol: 'Protokol' }[d.kind] || 'Zpráva'} č. ${d.no}</h2><span class="sub">${fmtDate(parseIso(d.date))} · ${fmtMoney(paymentTotal(d.payment.items))} · ${METHODS[d.payment.method]}</span></div>
       </div>
       <p class="sub">Odeslat zákazníkovi: otevře se nabídka Sdílet, kde vybereš WhatsApp, Mail nebo Tisk. Text zprávy se přiloží sám.</p>
       <div class="share-row">
