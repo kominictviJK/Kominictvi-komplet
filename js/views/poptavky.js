@@ -9,7 +9,7 @@ import {
 import { pickTermin } from '../termin.js';
 import { smsQueue } from '../smsqueue.js';
 import { fill, dayPhrase, blockPhrase } from '../texts.js';
-import { html, icon, toast, modal, isoDate, parseIso, fmtDayLong, fmtDateShort, fmtPhone, monthName } from '../ui.js';
+import { html, icon, toast, modal, isoDate, parseIso, fmtDayLong, fmtDateShort, fmtPhone, monthName, monthShort } from '../ui.js';
 
 const state = { tab: 'poptavky', kind: 'vse', selected: new Set() };
 
@@ -158,7 +158,7 @@ async function tabOpen(box, open, customers, rerender) {
         ${dayList.length ? dayList.map((d) => {
           const cities = [...new Set([...(d.trip?.villages || []), ...d.appts.map((a) => customers.get(a.customerId)?.objects.find((o) => o.id === a.objectId)?.address.city).filter(Boolean)])];
           return html`<a class="card daycard" href="#kalendar-${d.date}">
-            <span class="dc-date"><b>${parseIso(d.date).getDate()}.</b><span>${monthName(parseIso(d.date).getMonth()).slice(0, 3)}</span></span>
+            <span class="dc-date"><b>${parseIso(d.date).getDate()}.</b><span>${monthShort(parseIso(d.date).getMonth())}</span></span>
             <span class="main"><b>${fmtDayLong(parseIso(d.date))}</b><span class="sub">${cities.join(', ') || 'bez obcí'}</span></span>
             <span style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">${d.trip ? html`<span class="tag new">${TRIP_TYPES[d.trip.type]}</span>` : ''}<span class="tag">${d.appts.length} ${d.appts.length === 1 ? 'zákazník' : d.appts.length < 5 ? 'zákazníci' : 'zákazníků'}</span></span>
           </a>`;

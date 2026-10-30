@@ -54,6 +54,8 @@ export const fmtDate = (d) => `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullY
 export const fmtDateShort = (d) => `${d.getDate()}. ${d.getMonth() + 1}.`;
 export const fmtDayLong = (d) => `${DAYS[d.getDay()]} ${d.getDate()}. ${MONTHS[d.getMonth()]}`;
 export const monthName = (m) => MONTHS_NOM[m];
+const MONTHS_SHORT = ['led', 'úno', 'bře', 'dub', 'kvě', 'čvn', 'čvc', 'srp', 'zář', 'říj', 'lis', 'pro'];
+export const monthShort = (m) => MONTHS_SHORT[m];
 export const fmtMoney = (n) => `${Math.round(n).toLocaleString('cs-CZ').replace(/ /g, ' ')} Kč`;
 export const fmtPhone = (p) => String(p || '').replace(/\D/g, '').replace(/^(?:420)?(\d{3})(\d{3})(\d{3})$/, '$1 $2 $3') || p;
 

@@ -4,7 +4,7 @@ import { settings } from '../settings.js';
 import { displayName } from '../customers.js';
 import { nextCheck } from '../lhuty.js';
 import { TRIP_TYPES, KIND_LABEL } from '../planning.js';
-import { html, icon, toast, modal, isoDate, parseIso, fmtDayLong, monthName } from '../ui.js';
+import { html, icon, toast, modal, isoDate, parseIso, fmtDayLong, monthName, monthShort } from '../ui.js';
 
 const state = { month: null, day: null, view: 'mesic' };
 const DOW = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
@@ -127,7 +127,7 @@ function yearView(box, customers, appts) {
       <div class="year">${months.map((m, i) => {
         const due = m.due + (i === 0 ? m.overdue : 0);
         return html`<div class="ym">
-          <span class="ym-l">${monthName(m.d.getMonth()).slice(0, 3)}<small>${m.d.getFullYear() !== now.getFullYear() ? ` ${m.d.getFullYear()}` : ''}</small></span>
+          <span class="ym-l">${monthShort(m.d.getMonth())}<small>${m.d.getFullYear() !== now.getFullYear() ? ` ${m.d.getFullYear()}` : ''}</small></span>
           <span class="ym-bars"><span class="bar due" style="width:${Math.round(due / max * 100)}%"></span><span class="bar planned" style="width:${Math.round(m.planned / max * 100)}%"></span></span>
           <span class="ym-n"><b>${due}</b> k vyřízení${i === 0 && m.overdue ? html` <span class="tag bad">${m.overdue} propadlých</span>` : ''} · ${m.planned} domluveno</span>
         </div>`;
