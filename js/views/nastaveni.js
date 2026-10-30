@@ -1,5 +1,6 @@
 // Nastavení – sekce vlevo, obsah vpravo; změny platí od teď (vydané dokumenty se nemění)
 import { settings, saveSettings, guideSteps } from '../settings.js';
+import { signaturePad, stampFromPhoto } from '../signature.js';
 import { counterState } from '../numbering.js';
 import { all, restoreFromTrash } from '../db.js';
 import { resetTrialData } from '../seed.js';
@@ -10,7 +11,7 @@ const SECTIONS = [
   { id: 'firma', label: 'Firma a já', sub: (s) => 'údaje, logo, razítko, podpis, účet', warn: (s) => !s.firma.ucet || !s.firma.razitko },
   { id: 'cenik', label: 'Ceník', sub: (s) => `${s.cenik.kontrola.join(' / ')} · frézování ${s.cenik.frezovaniZaMetr}/m · ${s.cenik.dopravaZaKm} Kč/km` },
   { id: 'cislovani', label: 'Dokumenty a číslování', sub: () => 'šablony · číselné řady' },
-  { id: 'katalog', label: 'Katalog závad', sub: () => '13 nedostatků · 12 doporučení', stage: 3 },
+  { id: 'katalog', label: 'Katalog závad', sub: () => '13 nedostatků · 12 doporučení', stage: 8 },
   { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily', stage: 4 },
   { id: 'lhuty', label: 'Lhůty a plánování', sub: (s) => `${s.lhuty.tuhaMesice} / ${s.lhuty.kondenzacniMesice} měsíců · oslovit ${s.lhuty.oslovitMesicePredem} měs. předem` },
   { id: 'finance', label: 'Finance', sub: () => 'limit paušálu · kategorie · upomínky', stage: 6 },
@@ -97,13 +98,13 @@ function renderForm(box, section, s) {
         </div>
         <div class="card" style="display:flex;flex-direction:column;gap:10px">
           <h3>Razítko</h3>
-          <p class="sub" style="margin:0">Vyfotíš razítko na bílém papíře, aplikace odstraní pozadí.</p>
-          <span class="tag warn" style="align-self:flex-start">přijde v etapě 3</span>
+          <div class="stamp-tile">${s.firma.razitko ? html`<img src="${s.firma.razitko}" alt="Razítko">` : html`<span class="sub">Vyfoť razítko otisknuté na bílém papíře – pozadí se odstraní samo.</span>`}</div>
+          <label class="btn ${s.firma.razitko ? 'soft' : 'primary'}">${s.firma.razitko ? 'Vyfotit znovu' : 'Vyfotit razítko'}<input type="file" accept="image/*" capture="environment" id="stamp-file" hidden></label>
         </div>
         <div class="card" style="display:flex;flex-direction:column;gap:10px">
           <h3>Podpis</h3>
-          <p class="sub" style="margin:0">Podepíšeš se Pencilem, vloží se na všechny dokumenty.</p>
-          <span class="tag warn" style="align-self:flex-start">přijde v etapě 3</span>
+          <div class="stamp-tile">${s.firma.podpis ? html`<img src="${s.firma.podpis}" alt="Podpis">` : html`<span class="sub">Podepíšeš se Pencilem, podpis se vloží na všechny dokumenty.</span>`}</div>
+          <button class="btn ${s.firma.podpis ? 'soft' : 'primary'}" data-act="sign">${s.firma.podpis ? 'Podepsat znovu' : 'Podepsat Pencilem'}</button>
         </div>
       </div>` : ''}
   `);
@@ -114,6 +115,32 @@ function renderForm(box, section, s) {
     await saveSettings(patchFor(inp.dataset.path, value));
     toast('Uloženo');
   }));
+  box.querySelector('#stamp-file')?.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    toast('Zpracovávám razítko…');
+    const png = await stampFromPhoto(file);
+    await saveSettings({ firma: { razitko: png } });
+    toast('Razítko uloženo');
+    renderForm(box, section, settings());
+  });
+  box.querySelector('[data-act="sign"]')?.addEventListener('click', async () => {
+    let pad = null;
+    const root = document.getElementById('modal-root');
+    const result = modal({
+      title: 'Tvůj podpis',
+      body: '<p class="sub" style="margin-top:0">Podepiš se Pencilem tak, jak se podepisuješ na zprávy.</p><canvas class="sigpad" id="own-sig"></canvas>',
+      actions: [{ label: 'Smazat', value: 'clear' }, { label: 'Zrušit', value: null }, { label: 'Uložit podpis', value: () => pad?.toDataURL(), kind: 'primary' }],
+    });
+    await new Promise((r) => requestAnimationFrame(r));
+    pad = signaturePad(root.querySelector('#own-sig'), { color: '#1F3A75' });
+    const v = await result;
+    if (v === 'clear') { box.querySelector('[data-act="sign"]').click(); return; }
+    if (!v) return;
+    await saveSettings({ firma: { podpis: v } });
+    toast('Podpis uložen');
+    renderForm(box, section, settings());
+  });
 }
 
 async function renderNumbering(box, s) {

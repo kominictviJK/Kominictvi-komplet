@@ -1,7 +1,7 @@
 // Obrazovka Dnes – dnešní domluvení zákazníci v časových blocích
 import { byIndex, all } from '../db.js';
 import { settings } from '../settings.js';
-import { html, icon, isoDate, fmtDayLong, fmtPhone, toast } from '../ui.js';
+import { html, icon, isoDate, fmtDayLong, fmtPhone } from '../ui.js';
 
 const FUEL = { tuha: 'tuhá paliva', plyn: 'plyn', kapalna: 'kapalná paliva' };
 const KIND = { kontrola: 'Kontrola a čištění', revize: 'Revize', frezovani: 'Frézování', ostatni: 'Ostatní práce' };
@@ -36,7 +36,7 @@ function chimneySummary(obj) {
   }).join(' + ');
 }
 
-export async function render(el) {
+export async function render(el, { go } = {}) {
   const today = new Date();
   const visits = await load(today);
   const s = settings();
@@ -88,7 +88,8 @@ export async function render(el) {
     `)}
   `);
 
-  el.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => toast('Formulář zprávy přijde v etapě 3.')));
+  el.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => go(`navsteva/zacit/${b.dataset.start}`)));
+  el.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => go(`navsteva/${b.dataset.doc}`)));
 }
 
 function visitRow(v) {
@@ -105,7 +106,7 @@ function visitRow(v) {
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
         ${c.phones.map((p) => html`<a class="phone" href="tel:${p.replace(/\s/g, '')}">${fmtPhone(p)}</a>`)}
-        ${v.status === 'planned' ? html`<button class="btn primary small" data-start="${v.id}">Začít</button>` : html`<span class="tag ok">hotovo</span>`}
+        ${v.status === 'planned' ? html`<button class="btn primary small" data-start="${v.id}">Začít</button>` : v.documentId ? html`<button class="btn small soft" data-doc="${v.documentId}">✓ Hotovo · zpráva</button>` : html`<span class="tag ok">hotovo</span>`}
       </div>
     </div>`;
 }

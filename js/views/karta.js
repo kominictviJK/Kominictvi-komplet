@@ -43,7 +43,7 @@ export async function render(el, { args, go }) {
 
     <div class="card" style="margin-top:12px">
       <div class="card-title"><h3>Historie</h3><span class="sub">zprávy, protokoly, doklady, faktury</span></div>
-      ${docs.length ? docs.sort((a, b) => b.date.localeCompare(a.date)).map((d) => html`<div class="kv"><span>${fmtDate(parseIso(d.date))}</span><b>${d.no}</b><span class="sub">${d.title || ''}</span></div>`)
+      ${docs.length ? docs.sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt)).map((d) => html`<a class="kv" href="#navsteva-${d.id}" style="text-decoration:none;color:inherit"><span>${fmtDate(parseIso(d.date))}</span><b style="flex-grow:1">${d.status === 'final' ? `${d.kind === 'doklad' ? 'Doklad' : 'Zpráva'} ${d.no}` : 'Rozpracovaná návštěva'}</b><span class="sub">${d.title || ''}</span>${d.status === 'final' ? '' : html`<span class="tag warn">dokončit</span>`}<span class="chev">›</span></a>`)
         : html`<p class="sub" style="margin:0">Zatím žádné dokumenty. Po první návštěvě se tu objeví zprávy a doklady.</p>`}
     </div>
 
@@ -55,7 +55,14 @@ export async function render(el, { args, go }) {
 
   const note = el.querySelector('#note');
   note.addEventListener('change', async () => { c.note = note.value.trim(); await saveCustomer(c); toast('Poznámka uložena'); });
-  el.querySelector('[data-act="visit"]').addEventListener('click', () => toast('Návštěva a formulář zprávy přijdou v etapě 3.'));
+  el.querySelector('[data-act="visit"]').addEventListener('click', async () => {
+    let objectId = c.objects[0]?.id;
+    if (c.objects.length > 1) {
+      objectId = await modal({ title: 'Který objekt?', body: '<p>Vyber adresu, kde je návštěva.</p>', actions: [...c.objects.map((o) => ({ label: o.address.street || o.address.city, value: o.id })), { label: 'Zrušit', value: null }] });
+      if (!objectId) return;
+    }
+    go(`navsteva/zakaznik/${c.id}/${objectId}`);
+  });
   el.querySelector('[data-act="archive"]').addEventListener('click', async () => {
     await archiveCustomer(c.id, !c.archived);
     toast(c.archived ? 'Vráceno z archivu' : 'Archivováno');

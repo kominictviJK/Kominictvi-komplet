@@ -9,6 +9,7 @@ import * as soon from './views/soon.js';
 import * as zakaznici from './views/zakaznici.js';
 import * as karta from './views/karta.js';
 import * as zakaznikForm from './views/zakaznik-form.js';
+import * as navsteva from './views/navsteva.js';
 
 import { APP_VERSION } from './version.js';
 export { APP_VERSION };
@@ -27,6 +28,7 @@ const SETTINGS_ITEM = { id: 'nastaveni', label: 'Nastavení', icon: 'settings', 
 const SUBPAGES = [
   { id: 'karta', parent: 'zakaznici', view: karta },
   { id: 'zakaznik', parent: 'zakaznici', view: zakaznikForm },
+  { id: 'navsteva', parent: 'dnes', view: navsteva },
 ];
 const ALL = [...MENU, SETTINGS_ITEM, ...SUBPAGES];
 
