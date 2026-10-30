@@ -8,6 +8,7 @@ import { pickTermin } from '../termin.js';
 import { smsQueue } from '../smsqueue.js';
 import { fill, dayPhrase, blockPhrase } from '../texts.js';
 import { paymentTotal } from '../payment.js';
+import { hasKey, homePosition, currentPosition, route } from '../mapy.js';
 import { html, icon, isoDate, parseIso, fmtDayLong, fmtPhone, fmtMoney, toast, modal } from '../ui.js';
 
 export async function load(date = new Date()) {
@@ -48,7 +49,7 @@ export async function render(el, { go } = {}) {
   const planned = visits.filter((v) => v.status === 'planned');
   const done = visits.filter((v) => v.status === 'done');
   const notes = active.filter((v) => v.customer.note || v.note);
-  const url = routeUrl(active, s.lhuty.domovGps || { lat: 49.7306, lng: 17.2989 });
+  const url = routeUrl(active.filter((v) => v.status === 'planned'), (await homePosition()) || s.lhuty.domovGps || { lat: 49.7306, lng: 17.2989 });
   const [tom, week] = await Promise.all([load(tomorrow(today)), load(addDays(tIso, 7))]);
   const tomTodo = tom.filter((v) => v.status === 'planned' && !v.remindedEvening);
   const weekTodo = week.filter((v) => v.status === 'planned' && !v.remindedWeek);
@@ -177,9 +178,23 @@ function visitRow(v, visits) {
 }
 
 async function onTheWay(v) {
+  // odhad z GPS a trasy Mapy.cz
+  const to = v.object?.address;
+  if (hasKey() && to?.lat) {
+    toast('Počítám čas jízdy…');
+    const here = await currentPosition();
+    if (here) {
+      try {
+        const r = await route(here, { lat: to.lat, lng: to.lng });
+        const minut = Math.max(5, Math.round(r.minutes / 5) * 5);
+        await smsQueue({ title: 'Jedu k vám', note: `Podle Mapy.cz ${r.minutes} min (${String(r.km).replace('.', ',')} km). Čas v textu můžeš upravit.`, items: [{ name: displayName(v.customer), phone: v.customer.phones?.[0], body: fill('jedu', { minut }, v.customer) }] });
+        return;
+      } catch (e) { toast(e.message); }
+    }
+  }
   const min = await modal({
     title: `Jedu k vám – ${displayName(v.customer)}`,
-    body: '<p class="sub" style="margin-top:0">Za kolik minut tam budeš? (Odhad z GPS a trasy doplní Mapy.cz v etapě 5.)</p>',
+    body: '<p class="sub" style="margin-top:0">Za kolik minut tam budeš?</p>',
     actions: [...[10, 15, 20, 30, 45].map((m) => ({ label: `${m} min`, value: m })), { label: 'Zrušit', value: null }],
   });
   if (!min) return;

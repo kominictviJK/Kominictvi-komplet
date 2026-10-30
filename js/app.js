@@ -12,6 +12,7 @@ import * as zakaznikForm from './views/zakaznik-form.js';
 import * as navsteva from './views/navsteva.js';
 import * as poptavky from './views/poptavky.js';
 import * as kalendar from './views/kalendar.js';
+import * as mapa from './views/mapa.js';
 
 import { APP_VERSION } from './version.js';
 export { APP_VERSION };
@@ -21,7 +22,7 @@ const MENU = [
   { id: 'poptavky', label: 'Poptávky', icon: 'inbox', view: poptavky },
   { id: 'kalendar', label: 'Kalendář', icon: 'calendar', view: kalendar },
   { id: 'zakaznici', label: 'Zákazníci', icon: 'users', view: zakaznici },
-  { id: 'mapa', label: 'Mapa', icon: 'map', view: soon, stage: 5 },
+  { id: 'mapa', label: 'Mapa', icon: 'map', view: mapa },
   { id: 'historie', label: 'Historie', icon: 'history', view: soon, stage: 6 },
   { id: 'finance', label: 'Finance', icon: 'finance', view: soon, stage: 6 },
 ];

@@ -2,6 +2,7 @@
 import { settings, saveSettings, guideSteps } from '../settings.js';
 import { signaturePad, stampFromPhoto } from '../signature.js';
 import { TEXTS } from '../texts.js';
+import { geocode } from '../mapy.js';
 import { counterState } from '../numbering.js';
 import { all, restoreFromTrash } from '../db.js';
 import { resetTrialData } from '../seed.js';
@@ -16,7 +17,7 @@ const SECTIONS = [
   { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily · 10 šablon' },
   { id: 'lhuty', label: 'Lhůty a plánování', sub: (s) => `${s.lhuty.tuhaMesice} / ${s.lhuty.kondenzacniMesice} měsíců · oslovit ${s.lhuty.oslovitMesicePredem} měs. předem` },
   { id: 'finance', label: 'Finance', sub: () => 'limit paušálu · kategorie · upomínky', stage: 6 },
-  { id: 'propojeni', label: 'Propojení', sub: () => 'Google · Mapy.cz · AI · banka', warn: () => true, stage: 7 },
+  { id: 'propojeni', label: 'Propojení', sub: (s) => `Mapy.cz ${s.propojeni?.mapyKey ? '✓' : '–'} · Google – · AI – · banka –`, warn: () => true },
   { id: 'data', label: 'Data a bezpečnost', sub: (s) => (s.rezim.zkusebni ? 'zkušební režim · koš · zálohy' : 'koš · zálohy · Face ID'), ok: () => true },
 ];
 
@@ -79,6 +80,7 @@ export async function render(el, { args, go }) {
   if (FIELDS[current.id]) renderForm(box, current, s);
   else if (current.id === 'cislovani') await renderNumbering(box, s);
   else if (current.id === 'texty') renderTexts(box, s);
+  else if (current.id === 'propojeni') renderConnections(box, s);
   else if (current.id === 'data') await renderData(box, s, () => render(el, { args, go }));
   else box.innerHTML = String(html`<div class="page-head"><h2>${current.label}</h2></div><div class="card soon" style="min-height:240px"><span class="stage">Etapa ${current.stage}</span><p>Tahle sekce se doplní v etapě ${current.stage}.</p></div>`);
 }
@@ -227,4 +229,32 @@ function renderTexts(box, s) {
     toast('Vráceno původní znění');
     renderTexts(box, settings());
   }));
+}
+
+function renderConnections(box, s) {
+  const p = s.propojeni || {};
+  box.innerHTML = String(html`
+    <div class="page-head"><h2>Propojení</h2></div>
+    <div class="card">
+      <div class="card-title"><h3>Mapy.cz</h3>${p.mapyKey ? html`<span class="tag ok">klíč zadán</span>` : html`<span class="tag warn">chybí klíč</span>`}</div>
+      <p class="sub" style="margin-top:0">Mapa, doplnění PSČ, okresu a polohy zákazníků, trasa dne a čas jízdy pro „Jedu k vám“. Zdarma do 250 000 kreditů měsíčně.</p>
+      <label class="field"><span>API klíč</span><input class="input" id="mapy-key" value="${p.mapyKey || ''}" placeholder="vložíš z developer.mapy.com" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" data-act="mapy-save">Uložit a vyzkoušet</button></div>
+      <p class="sub" id="mapy-status" style="margin-bottom:0"></p>
+    </div>
+    <div class="card"><div class="card-title"><h3>Google (Kalendář, Gmail, Disk)</h3><span class="tag">etapa 7</span></div><p class="sub" style="margin:0">Pomocník pod účtem KominictviJK – čtení poptávek a nákupů z Gmailu, posílání e-mailů, kalendář „Kominictví“, zálohy na Disk.</p></div>
+    <div class="card"><div class="card-title"><h3>AI (Claude)</h3><span class="tag">etapa 7</span></div><p class="sub" style="margin:0">Čtení štítků, účtenek, faktur a screenshotů poptávek.</p></div>
+    <div class="card"><div class="card-title"><h3>Banka</h3><span class="tag">etapa 7</span></div><p class="sub" style="margin:0">Párování plateb podle VS a návrhy nákladů z plateb kartou.</p></div>`);
+  box.querySelector('[data-act="mapy-save"]').addEventListener('click', async () => {
+    const k = box.querySelector('#mapy-key').value.trim();
+    await saveSettings({ propojeni: { mapyKey: k } });
+    const st = box.querySelector('#mapy-status');
+    if (!k) { st.textContent = 'Klíč smazán.'; return; }
+    st.textContent = 'Zkouším…';
+    try {
+      const g = await geocode(settings().lhuty.domov);
+      st.textContent = g ? `✓ Funguje. ${settings().lhuty.domov} → PSČ ${g.zip || '?'}, okres ${g.district || '?'}.` : 'Klíč funguje, ale adresu domova se nepodařilo najít.';
+      if (g) await saveSettings({ lhuty: { domovGps: { lat: g.lat, lng: g.lng, addr: settings().lhuty.domov } } });
+    } catch (e) { st.textContent = `✕ ${e.message}`; }
+  });
 }
