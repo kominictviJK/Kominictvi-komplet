@@ -4,6 +4,8 @@ import { settings } from '../settings.js';
 import { displayName } from '../customers.js';
 import { nextCheck } from '../lhuty.js';
 import { TRIP_TYPES, KIND_LABEL } from '../planning.js';
+import { personalEvents } from '../sync.js';
+import { hasHelper } from '../google.js';
 import { html, icon, toast, modal, isoDate, parseIso, fmtDayLong, monthName, monthShort } from '../ui.js';
 
 const state = { month: null, day: null, view: 'mesic' };
@@ -33,10 +35,20 @@ export async function render(el, { args }) {
   el.querySelector('[data-today]')?.addEventListener('click', () => { state.day = isoDate(new Date()); state.month = state.day.slice(0, 7); render(el, { args: [] }); });
   const box = el.querySelector('#cal');
   if (state.view === 'rok') yearView(box, customers, appts);
-  else monthView(box, appts, events, cust, () => render(el, { args: [] }));
+  else monthView(box, appts, events, cust, () => render(el, { args: [] }), await personalEvents());
 }
 
-function monthView(box, appts, events, cust, rerender) {
+// Osobní události z Google Kalendáře (jen pro čtení)
+const gDays = (e) => {
+  const en = new Date(e.end); const d = new Date(e.start); d.setHours(0, 0, 0, 0);
+  const out = [];
+  do { out.push(isoDate(d)); d.setDate(d.getDate() + 1); } while (d < en && out.length < 31);
+  return out;
+};
+
+function monthView(box, appts, events, cust, rerender, personal = []) {
+  const pByDay = new Map();
+  for (const e of personal) for (const d of gDays(e)) { if (!pByDay.has(d)) pByDay.set(d, []); pByDay.get(d).push(e); }
   const first = parseIso(`${state.month}-01`);
   const start = new Date(first); start.setDate(1 - ((first.getDay() + 6) % 7));
   const today = isoDate(new Date());
@@ -56,7 +68,7 @@ function monthView(box, appts, events, cust, rerender) {
             const ev = byDay(events, iso);
             const trip = ev.find((e) => e.kind === 'vyjezd');
             const tasks = ev.filter((e) => e.kind === 'task' && !e.done).length;
-            const other = ev.filter((e) => e.kind === 'event').length;
+            const other = ev.filter((e) => e.kind === 'event').length + (pByDay.get(iso)?.length || 0);
             return html`<button class="cal-day ${iso.slice(0, 7) !== state.month ? 'out' : ''} ${iso === today ? 'today' : ''} ${iso === state.day ? 'sel' : ''}" data-day="${iso}">
               <span class="cal-n">${d.getDate()}</span>
               ${trip ? html`<span class="cal-trip">${trip.villages[0] || TRIP_TYPES[trip.type]}</span>` : ''}
@@ -76,12 +88,13 @@ function monthView(box, appts, events, cust, rerender) {
         })}
         ${dayEvents.filter((e) => e.kind === 'event').sort((a, b) => (a.time || '').localeCompare(b.time || '')).map((e) => html`<div class="ev own"><b>${e.time || 'celý den'}</b><span>${e.title}${e.note ? html`<br><small>${e.note}</small>` : ''}</span><button class="btn small" data-del="${e.id}" aria-label="Smazat událost">✕</button></div>`)}
         ${dayEvents.filter((e) => e.kind === 'task').map((e) => html`<label class="ev task ${e.done ? 'done' : ''}"><input type="checkbox" data-task="${e.id}" ${e.done ? 'checked' : ''}><span>${e.title}</span><button class="btn small" data-del="${e.id}" aria-label="Smazat úkol">✕</button></label>`)}
-        ${!dayAppts.length && !dayEvents.length ? html`<p class="sub">Volný den.</p>` : ''}
+        ${(pByDay.get(state.day) || []).map((e) => html`<div class="ev ev-personal"><b>${e.allDay ? 'celý den' : new Date(e.start).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}</b><span>${e.title}<br><small>osobní kalendář Google</small></span></div>`)}
+        ${!dayAppts.length && !dayEvents.length && !pByDay.get(state.day)?.length ? html`<p class="sub">Volný den.</p>` : ''}
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn small soft" data-add="event">${icon('plus')} Událost</button>
           <button class="btn small soft task-btn" data-add="task">${icon('check')} Úkol</button>
         </div>
-        <p class="sub" style="font-size:12px;margin-bottom:0">Propojení s Google kalendářem přijde v etapě 7.</p>
+        <p class="sub" style="font-size:12px;margin-bottom:0">${hasHelper() ? 'Návštěvy a výjezdy se samy zapisují do Google Kalendáře „Kominictví“, osobní události se tu ukazují fialově.' : 'Propojení s Google Kalendářem zapneš v Nastavení → Propojení.'}</p>
       </div>
     </div>`);
   box.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', () => { state.day = b.dataset.day; if (state.day.slice(0, 7) !== state.month) state.month = state.day.slice(0, 7); rerender(); }));

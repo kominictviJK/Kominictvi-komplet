@@ -5,8 +5,9 @@ import { displayName, salutation } from '../customers.js';
 import { createOffer, numberOffer, offerTotals, customerUnitPrice } from '../finance.js';
 import { createInquiry } from '../planning.js';
 import { buildOfferPdf } from '../pdf.js';
-import { podpis } from '../share.js';
+import { podpis, sendOut } from '../share.js';
 import { pickCustomer, photoData } from './finance.js';
+import { hasAi, readReceipt } from '../ai.js';
 import { html, toast, modal, parseIso, fmtDate, fmtMoney } from '../ui.js';
 
 const GROUPS = [['prace', 'Práce'], ['material', 'Materiál'], ['doprava', 'Doprava']];
@@ -114,7 +115,20 @@ function draw(el, o, c, go) {
   el.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', async () => { o.items.splice(Number(b.dataset.del), 1); await save(); redraw(); }));
   el.querySelectorAll('[data-delph]').forEach((b) => b.addEventListener('click', async () => { o.photos.splice(Number(b.dataset.delph), 1); await save(); redraw(); }));
   el.querySelector('#o-photo')?.addEventListener('change', async (e) => { const f = e.target.files?.[0]; if (!f) return; o.photos.push(await photoData(f)); await save(); redraw(); });
-  el.querySelector('#mat-photo')?.addEventListener('change', async (e) => { const f = e.target.files?.[0]; if (!f) return; o.materialInvoice = await photoData(f); await save(); toast('Faktura za materiál přiložena'); redraw(); });
+  el.querySelector('#mat-photo')?.addEventListener('change', async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    o.materialInvoice = await photoData(f); await save();
+    if (!hasAi()) { toast('Faktura za materiál přiložena'); redraw(); return; }
+    toast('Čtu fakturu za materiál…');
+    try {
+      const r = await readReceipt(o.materialInvoice);
+      const items = (r.items || []).filter((i) => i.label && Number(i.price) > 0);
+      items.forEach((i) => o.items.push({ id: uid('i_'), group: 'material', label: i.label, qty: Number(i.qty) || 1, unit: i.unit || 'ks', price: Math.round(Number(i.price) * 100) / 100 }));
+      await save();
+      toast(items.length ? `Načteno ${items.length} položek materiálu (nákupní ceny, přirážka se přičte sama)` : 'Položky se nepodařilo přečíst – doplň ručně');
+    } catch (err) { toast(err.message); }
+    redraw();
+  });
   el.querySelectorAll('[data-status]').forEach((b) => b.addEventListener('click', async () => {
     const prev = o.status;
     o.status = b.dataset.status;
@@ -141,8 +155,7 @@ function draw(el, o, c, go) {
     const t2 = offerTotals(o);
     const text = `${salutation(c)} na základě prohlídky Vám v příloze posílám cenovou nabídku č. ${o.no}${o.subject ? ` na ${o.subject.charAt(0).toLowerCase()}${o.subject.slice(1)}` : ''}. Celková cena činí ${fmtMoney(t2.total)} a nabídka platí do ${fmtDate(parseIso(o.validUntil))}. Pokud budete mít jakékoli dotazy, rád je zodpovím. Pro potvrzení stačí odpovědět na tuto zprávu nebo zavolat. ${podpis()}`;
     const file = new File([pdf], `Nabidka-${o.no.replace('/', '-')}.pdf`, { type: 'application/pdf' });
-    const data = { files: [file], text, title: `Cenová nabídka č. ${o.no}` };
-    if (navigator.canShare?.(data)) { try { await navigator.share(data); o.status = o.status === 'draft' ? 'sent' : o.status; o.sentAt = new Date().toISOString(); await put('offers', o); } catch { /* zrušeno */ } } else window.open(URL.createObjectURL(pdf), '_blank');
+    if (await sendOut({ files: [file], text, title: `Cenová nabídka č. ${o.no}`, customer: c })) { o.status = o.status === 'draft' ? 'sent' : o.status; o.sentAt = new Date().toISOString(); await put('offers', o); }
     redraw();
   });
 }

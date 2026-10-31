@@ -17,6 +17,9 @@ import * as historie from './views/historie.js';
 import * as finance from './views/finance.js';
 import * as nabidka from './views/nabidka.js';
 
+import { initLock } from './lock.js';
+import { autoBackup } from './backup.js';
+import { backgroundSync } from './sync.js';
 import { APP_VERSION } from './version.js';
 export { APP_VERSION };
 
@@ -80,12 +83,20 @@ async function start() {
   }
   await openDb();
   await loadSettings();
+  initLock();
   const seeded = await seedIfEmpty();
   purgeTrash().catch(() => {});
   requestPersistence().catch(() => {});
   window.addEventListener('hashchange', renderView);
   await renderView();
   if (seeded) toast('Vítej! Aplikace běží ve zkušebním režimu s ukázkovými zákazníky.');
+
+  // Na pozadí: Google Kalendář, Gmail, banka a denní záloha (když je nastavený pomocník)
+  setTimeout(async () => {
+    await backgroundSync().catch(() => {});
+    await autoBackup().catch(() => {});
+  }, 4000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) backgroundSync().catch(() => {}); });
 
   // Offline režim: service worker (jen na vlastní adrese aplikace, ne v náhledu)
   if ('serviceWorker' in navigator && location.protocol === 'https:' && !location.hostname.endsWith('claude.ai') && !location.hostname.endsWith('claudeusercontent.com')) {

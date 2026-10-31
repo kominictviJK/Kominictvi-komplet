@@ -5,13 +5,15 @@ import { displayName, listCustomers, matches } from '../customers.js';
 import { paymentTotal } from '../payment.js';
 import {
   revenueByMonth, PAUSAL_LIMITS, invoiceState, reminderDue, documentsToInvoice, createInvoice, sumItems,
-  offerTotals, createOffer, CATEGORIES, catLabel, saveExpense, applyRecurring, saveRecurring,
+  offerTotals, createOffer, CATEGORIES, catLabel, saveExpense, applyRecurring, saveRecurring, guessCategory,
 } from '../finance.js';
 import { buildInvoicePdf } from '../pdf.js';
 import { smsQueue } from '../smsqueue.js';
-import { podpis } from '../share.js';
+import { podpis, sendOut } from '../share.js';
 import { html, icon, toast, modal, isoDate, parseIso, fmtDate, fmtMoney, monthName, monthShort } from '../ui.js';
-import { uid } from '../db.js';
+import { uid, del } from '../db.js';
+import { hasAi, readReceipt } from '../ai.js';
+import { pending } from '../sync.js';
 
 const state = { tab: 'prehled', month: null, cat: 'vse' };
 
@@ -157,8 +159,7 @@ async function invoiceDetail(id, rerender) {
     const files = [new File([inv.pdf], `Faktura-${inv.no.replace('/', '-')}.pdf`, { type: 'application/pdf' }), ...docs.filter((d) => d.pdf).map((d) => new File([d.pdf], `Zprava-${d.no.replace(/\//g, '-')}.pdf`, { type: 'application/pdf' }))];
     const s = settings();
     const text = `Dobrý den, v příloze zasílám fakturu č. ${inv.no} na částku ${fmtMoney(inv.total)} se splatností do ${fmtDate(parseIso(inv.due))}${docs.length ? ` a k ní ${docs.length === 1 ? `zprávu č. ${docs[0].no}` : `zprávy č. ${docs.map((d) => d.no).join(', ')}`}` : ''}. Platbu můžete provést převodem na účet ${s.firma.ucet || '…'}, VS ${inv.vs}, nebo jednoduše QR kódem na faktuře. S pozdravem ${podpis()}`;
-    const data = { files, text, title: `Faktura č. ${inv.no} – ${s.firma.znacka}` };
-    if (navigator.canShare?.(data)) { try { await navigator.share(data); await put('invoices', { ...inv, sentAt: new Date().toISOString() }); } catch { /* zrušeno */ } } else window.open(URL.createObjectURL(inv.pdf), '_blank');
+    if (await sendOut({ files, text, title: `Faktura č. ${inv.no} – ${s.firma.znacka}`, customer: c })) await put('invoices', { ...inv, sentAt: new Date().toISOString() });
   }
   if (act === 'paid') { await put('invoices', { ...inv, status: 'paid', paidAt: new Date().toISOString() }); toast('Označeno jako zaplacené'); }
   if (act === 'storno') { await put('invoices', { ...inv, status: 'storno' }); for (const d of docs) await put('documents', { ...d, invoiceId: null, invoiceNo: null }); toast('Faktura stornována, zprávy jsou znovu k vyfakturování'); }
@@ -226,7 +227,12 @@ async function tabExpenses(box, rerender) {
   const shown = month.filter((e) => state.cat === 'vse' || e.category === state.cat);
   const months = [...new Set([state.month, ...exps.map((e) => e.date.slice(0, 7))])].sort().reverse();
   const rec = settings().finance.pravidelne || [];
+  const queue = await pending('expense');
   box.innerHTML = String(html`
+    ${queue.length ? html`<div class="card" style="border-left:4px solid var(--gold);margin-bottom:12px">
+      <div class="card-title"><h3>Ke kontrole (${queue.length})</h3><span class="sub">nákupy z Gmailu a platby z účtu – stačí potvrdit</span></div>
+      ${queue.slice(0, 8).map((q) => html`<div class="kv"><span>${fmtDate(parseIso(q.date))}</span><span style="flex-grow:1"><b>${q.title}</b><br><small class="sub">${q.source}${q.attachments?.length ? ' · příloha' : ''}${q.from ? ` · ${q.from.replace(/<.*>/, '').trim()}` : ''}</small></span>${q.amount ? html`<b>${fmtMoney(q.amount)}</b>` : ''}<button class="btn small primary" data-q="${q.id}">Zapsat</button><button class="btn small" data-qno="${q.id}">Není náklad</button></div>`)}
+    </div>` : ''}
     <div class="grid c4">
       <div class="card kpi dark"><span class="label">Náklady celkem</span><span class="big">${fmtMoney(total)}</span><select class="input" id="em" style="height:40px;min-height:40px;padding:6px 10px;margin-top:4px;background:#3A322B;color:#fff;border:none">${months.map((m) => html`<option value="${m}" ${m === state.month ? 'selected' : ''}>${monthName(Number(m.slice(5)) - 1)} ${m.slice(0, 4)}</option>`)}</select></div>
       <div class="card kpi"><span class="label">Běžné náklady</span><span class="big">${fmtMoney(total - mat)}</span><span class="sub">bez materiálu na zakázky</span></div>
@@ -256,6 +262,8 @@ async function tabExpenses(box, rerender) {
       </div>
     </div>`);
   box.querySelector('#em').addEventListener('change', (e) => { state.month = e.target.value; rerender(); });
+  box.querySelectorAll('[data-q]').forEach((b) => b.addEventListener('click', () => expenseForm(null, rerender, queue.find((q) => q.id === b.dataset.q))));
+  box.querySelectorAll('[data-qno]').forEach((b) => b.addEventListener('click', async () => { await del('queue', b.dataset.qno); toast('Vyřazeno'); rerender(); }));
   box.querySelectorAll('[data-cat]').forEach((b) => b.addEventListener('click', () => { state.cat = b.dataset.cat; rerender(); }));
   box.querySelectorAll('[data-exp]').forEach((b) => b.addEventListener('click', () => expenseForm(exps.find((x) => x.id === b.dataset.exp), rerender)));
   box.querySelector('[data-act="rec-add"]').addEventListener('click', () => recurringForm(null, rerender));
@@ -271,18 +279,43 @@ async function photoData(file) {
 }
 export { photoData };
 
-async function expenseForm(e, rerender) {
+async function expenseForm(e, rerender, fromQueue = null) {
   const offers = (await all('offers')).filter((o) => o.status !== 'rejected');
   const customers = new Map((await all('customers')).map((c) => [c.id, c]));
   const x = e ? { ...e } : { date: isoDate(), amount: '', category: 'tankovani', note: '', photo: null, jobRef: null, returned: false };
+  let aiMsg = hasAi() ? 'Po vyfocení se účtenka přečte sama.' : 'Automatické čtení účtenek zapneš v Nastavení → Propojení → AI.';
   const root = document.getElementById('modal-root');
+  const fill = (r) => {
+    if (r.amount) x.amount = String(r.amount);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(r.date || '')) x.date = r.date;
+    if (CATEGORIES.some(([k]) => k === r.category)) x.category = r.category;
+    x.note = [r.shop, r.note].filter(Boolean).join(' – ').slice(0, 120) || x.note;
+    if (r.items?.length) x.items = r.items;
+  };
+  const readAi = async (dataUrl) => {
+    if (!hasAi()) return;
+    aiMsg = 'Čtu účtenku…'; draw();
+    try { fill(await readReceipt(dataUrl)); aiMsg = '✓ Přečteno – zkontroluj částku a ulož.'; } catch (err) { aiMsg = `✕ ${err.message}`; }
+    draw();
+  };
+  if (fromQueue) {
+    x.date = fromQueue.date || x.date; x.note = fromQueue.title || ''; x.category = guessCategory(`${fromQueue.title} ${fromQueue.from || ''} ${fromQueue.text || ''}`);
+    if (fromQueue.amount) x.amount = String(fromQueue.amount);
+    const att = fromQueue.attachments?.[0];
+    if (att) {
+      const url = `data:${att.type};base64,${att.base64}`;
+      if (att.type.startsWith('image/')) x.photo = url; else x.pdf = url;
+      setTimeout(() => readAi(url), 0);
+    }
+  }
   const draw = () => {
     root.innerHTML = String(html`<div class="modal-back"><div class="modal" role="dialog" aria-modal="true" aria-label="Náklad">
       <h2>${e ? 'Upravit náklad' : 'Nový náklad'}</h2>
       <div style="display:flex;gap:12px;align-items:center">
         ${x.photo ? html`<img src="${x.photo}" alt="Účtenka" style="width:80px;height:100px;object-fit:cover;border-radius:8px">` : ''}
+        ${x.pdf && !x.photo ? html`<span class="tag">faktura PDF z e-mailu</span>` : ''}
         <label class="btn ${x.photo ? 'soft' : 'primary'}">${x.photo ? 'Vyfotit znovu' : 'Vyfotit účtenku'}<input type="file" accept="image/*" capture="environment" id="ex-photo" hidden></label>
-        <span class="sub">Automatické vyčtení účtenky (AI) přijde v etapě 7.</span>
+        <span class="sub" id="ex-ai">${aiMsg}</span>
       </div>
       <div class="grid c2"><label class="field"><span>Částka (Kč)</span><input class="input" id="ex-a" value="${x.amount}" inputmode="decimal"></label><label class="field"><span>Datum</span><input class="input" type="date" id="ex-d" value="${x.date}"></label></div>
       <div class="field"><span>Kategorie</span><div class="chips">${CATEGORIES.map(([k, l]) => html`<button class="chip ${x.category === k ? 'on' : ''}" data-c="${k}">${l}</button>`)}</div></div>
@@ -292,7 +325,7 @@ async function expenseForm(e, rerender) {
       <div class="actions">${e ? html`<button class="btn danger" data-del>Smazat</button>` : ''}<span class="grow"></span><button class="btn" data-cancel>Zrušit</button><button class="btn primary" data-save>Uložit</button></div>
     </div></div>`);
     const keep = () => { x.amount = root.querySelector('#ex-a').value; x.date = root.querySelector('#ex-d').value; x.note = root.querySelector('#ex-n').value; };
-    root.querySelector('#ex-photo').addEventListener('change', async (ev) => { keep(); const f = ev.target.files?.[0]; if (f) { x.photo = await photoData(f); draw(); } });
+    root.querySelector('#ex-photo').addEventListener('change', async (ev) => { keep(); const f = ev.target.files?.[0]; if (f) { x.photo = await photoData(f); draw(); readAi(x.photo); } });
     root.querySelectorAll('[data-c]').forEach((b) => b.addEventListener('click', () => { keep(); x.category = b.dataset.c; draw(); }));
     root.querySelectorAll('[data-job]').forEach((b) => b.addEventListener('click', () => { keep(); const o = offers.find((y) => y.id === b.dataset.job); x.jobRef = x.jobRef?.id === o.id ? null : { type: 'offer', id: o.id, label: `${displayName(customers.get(o.customerId) || {})}, ${o.subject || 'zakázka'}` }; draw(); }));
     root.querySelector('[data-ret]')?.addEventListener('click', () => { keep(); x.returned = !x.returned; draw(); });
@@ -302,6 +335,7 @@ async function expenseForm(e, rerender) {
       keep();
       if (!(Number(String(x.amount).replace(',', '.')) > 0)) { toast('Zadej částku'); return; }
       await saveExpense(x);
+      if (fromQueue) await del('queue', fromQueue.id);
       root.innerHTML = ''; toast('Náklad uložen'); rerender();
     });
   };

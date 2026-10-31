@@ -4,7 +4,12 @@ import { signaturePad, stampFromPhoto } from '../signature.js';
 import { TEXTS } from '../texts.js';
 import { geocode } from '../mapy.js';
 import { counterState } from '../numbering.js';
-import { all, restoreFromTrash } from '../db.js';
+import { all, get, put, restoreFromTrash } from '../db.js';
+import { helperCode, ensureToken, callHelper, hasHelper } from '../google.js';
+import { hasAi, testAi, aiSpent } from '../ai.js';
+import { syncCalendar, scanGmail, fetchBank, parseStatement, applyTransactions } from '../sync.js';
+import { backupToDrive, backupToFile, lastBackup, decrypt, restore, backupPass } from '../backup.js';
+import { lockSupported, lockEnabled, setupLock, disableLock } from '../lock.js';
 import { resetTrialData } from '../seed.js';
 import { html, raw, toast, modal, fmtDate } from '../ui.js';
 import { APP_VERSION } from '../version.js';
@@ -17,7 +22,7 @@ const SECTIONS = [
   { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily · 10 šablon' },
   { id: 'lhuty', label: 'Lhůty a plánování', sub: (s) => `${s.lhuty.tuhaMesice} / ${s.lhuty.kondenzacniMesice} měsíců · oslovit ${s.lhuty.oslovitMesicePredem} měs. předem` },
   { id: 'finance', label: 'Finance', sub: (s) => `paušál ${s.finance.pausalPasmo}. pásmo · upomínky ${s.finance.upominkaDny.join(' a +')} dní` },
-  { id: 'propojeni', label: 'Propojení', sub: (s) => `Mapy.cz ${s.propojeni?.mapyKey ? '✓' : '–'} · Google – · AI – · banka –`, warn: () => true },
+  { id: 'propojeni', label: 'Propojení', sub: (s) => `Mapy.cz ${s.propojeni?.mapyKey ? '✓' : '–'} · Google ${s.propojeni?.googleUrl ? '✓' : '–'} · AI ${s.propojeni?.aiKey ? '✓' : '–'} · banka ${s.propojeni?.fioToken ? '✓' : 'výpis'}`, warn: (s) => !s.propojeni?.mapyKey || !s.propojeni?.googleUrl || !s.propojeni?.aiKey },
   { id: 'data', label: 'Data a bezpečnost', sub: (s) => (s.rezim.zkusebni ? 'zkušební režim · koš · zálohy' : 'koš · zálohy · Face ID'), ok: () => true },
 ];
 
@@ -84,7 +89,7 @@ export async function render(el, { args, go }) {
   if (FIELDS[current.id]) renderForm(box, current, s);
   else if (current.id === 'cislovani') await renderNumbering(box, s);
   else if (current.id === 'texty') renderTexts(box, s);
-  else if (current.id === 'propojeni') renderConnections(box, s);
+  else if (current.id === 'propojeni') await renderConnections(box, s);
   else if (current.id === 'data') await renderData(box, s, () => render(el, { args, go }));
   else box.innerHTML = String(html`<div class="page-head"><h2>${current.label}</h2></div><div class="card soon" style="min-height:240px"><span class="stage">Etapa ${current.stage}</span><p>Tahle sekce se doplní v etapě ${current.stage}.</p></div>`);
 }
@@ -170,6 +175,7 @@ async function renderNumbering(box, s) {
 
 async function renderData(box, s, rerender) {
   const trash = (await all('trash')).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
+  const last = await lastBackup();
   box.innerHTML = String(html`
     <div class="page-head"><h2>Data a bezpečnost</h2></div>
     <div class="card">
@@ -188,8 +194,27 @@ async function renderData(box, s, rerender) {
         : html`<p class="sub" style="margin:0">Koš je prázdný.</p>`}
     </div>
     <div class="card">
-      <div class="card-title"><h3>Zálohy a Face ID</h3><span class="tag warn">etapa 7</span></div>
-      <p class="sub" style="margin:0">Automatická záloha na Google Disk, ruční záloha na flashku a zámek Face ID po ${s.bezpecnost.zamekMinuty} minutách.</p>
+      <div class="card-title"><h3>Zálohy</h3>${last ? html`<span class="tag ok">poslední ${fmtDate(new Date(last.at))}</span>` : html`<span class="tag warn">zatím žádná</span>`}</div>
+      <p class="sub" style="margin-top:0">Záloha obsahuje všechno – zákazníky, zprávy i s PDF, faktury, náklady a nastavení. Je zašifrovaná heslem, takže ji bez hesla nikdo nepřečte. ${hasHelper() ? 'Každý den se sama uloží na Google Disk (složka „Kominictví – zálohy“, posledních 30).' : 'Automatická denní záloha na Google Disk začne po nastavení pomocníka Google.'}${s.rezim.zkusebni ? ' Ve zkušebním režimu se automaticky nezálohuje.' : ''}</p>
+      ${last ? html`<p class="sub">Poslední záloha: ${fmtDate(new Date(last.at))} v ${new Date(last.at).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })} · ${last.where}</p>` : ''}
+      <label class="field"><span>Heslo záloh</span><input class="input" type="password" id="bk-pass" value="${s.bezpecnost.zalohaHeslo || ''}" placeholder="aspoň 8 znaků – zapiš si ho, bez něj zálohu neobnovíš" autocomplete="new-password"></label>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn soft" data-act="bk-pass">Uložit heslo</button>
+        ${hasHelper() ? html`<button class="btn primary" data-act="bk-drive">Zálohovat teď na Disk</button>` : ''}
+        <button class="btn soft" data-act="bk-file">Záloha do souboru / na flashku</button>
+        <label class="btn">Obnovit ze souboru<input type="file" id="bk-restore" hidden></label>
+        ${hasHelper() ? html`<button class="btn" data-act="bk-drive-list">Obnovit z Disku</button>` : ''}
+      </div>
+      <p class="sub" id="bk-status" style="margin-bottom:0"></p>
+    </div>
+    <div class="card">
+      <div class="card-title"><h3>Zámek Face ID</h3>${lockEnabled() ? html`<span class="tag ok">zapnutý</span>` : html`<span class="tag">vypnutý</span>`}</div>
+      <p class="sub" style="margin-top:0">Když iPad necháš ${s.bezpecnost.zamekMinuty} minut ležet nebo aplikaci zavřeš, při dalším otevření se zeptá na Face ID. Data zákazníků tak neuvidí nikdo jiný.</p>
+      ${lockSupported() ? html`<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+        ${lockEnabled() ? html`<button class="btn" data-act="lock-off">Vypnout zámek</button>` : html`<button class="btn primary" data-act="lock-on">Zapnout Face ID</button>`}
+        <label class="field" style="flex-direction:row;align-items:center;gap:8px;margin:0"><span>Zamknout po</span><select class="input" id="lock-min" style="width:auto">${[5, 15, 30, 60].map((m) => html`<option value="${m}" ${s.bezpecnost.zamekMinuty === m ? 'selected' : ''}>${m} min</option>`)}</select></label>
+      </div>` : html`<p class="sub" style="margin:0">Zámek jde zapnout v aplikaci na iPadu (otevřené z plochy).</p>`}
+      <p class="sub" id="lock-status" style="margin-bottom:0"></p>
     </div>
     <p class="sub">Verze aplikace ${APP_VERSION}</p>
   `);
@@ -205,6 +230,47 @@ async function renderData(box, s, rerender) {
     toast('Obnoveno');
     rerender();
   }));
+  const st = box.querySelector('#bk-status');
+  const run = async (label, fn) => { st.textContent = label; try { await fn(); } catch (e) { st.textContent = `✕ ${e.message}`; } };
+  box.querySelector('[data-act="bk-pass"]').addEventListener('click', async () => {
+    const v = box.querySelector('#bk-pass').value;
+    if (v && v.length < 8) { st.textContent = '✕ Heslo musí mít aspoň 8 znaků.'; return; }
+    await saveSettings({ bezpecnost: { zalohaHeslo: v } });
+    st.textContent = v ? '✓ Heslo uloženo. Zapiš si ho někam mimo iPad.' : 'Heslo smazáno – zálohy se nebudou dělat.';
+  });
+  box.querySelector('[data-act="bk-drive"]')?.addEventListener('click', () => run('Zálohuji na Google Disk…', async () => { const r = await backupToDrive(); st.textContent = `✓ Uloženo na Disk (${Math.round(r.size / 1024)} kB).`; setTimeout(rerender, 1500); }));
+  box.querySelector('[data-act="bk-file"]').addEventListener('click', () => run('Připravuji zálohu…', async () => { await backupToFile(); st.textContent = '✓ Záloha připravena – ulož ji do Souborů nebo na flashku.'; }));
+  const restoreText = async (text) => {
+    const pass = await askPass();
+    if (!pass) { st.textContent = ''; return; }
+    const data = await decrypt(text, pass);
+    const ok = await modal({ title: 'Obnovit zálohu?', body: String(html`<p>Záloha z <b>${fmtDate(new Date(data.createdAt))}</b>: ${data.stores.customers?.length || 0} zákazníků, ${data.stores.documents?.length || 0} dokumentů, ${data.stores.invoices?.length || 0} faktur.</p><p><b>Všechna současná data v iPadu se nahradí obsahem zálohy.</b></p>`), actions: [{ label: 'Zrušit', value: false }, { label: 'Obnovit', value: true, kind: 'danger' }] });
+    if (!ok) { st.textContent = ''; return; }
+    await restore(data);
+    toast('Záloha obnovena');
+    location.reload();
+  };
+  box.querySelector('#bk-restore').addEventListener('change', (e) => run('Čtu zálohu…', async () => { const f = e.target.files?.[0]; if (f) await restoreText(await f.text()); }));
+  box.querySelector('[data-act="bk-drive-list"]')?.addEventListener('click', () => run('Načítám zálohy z Disku…', async () => {
+    const list = await callHelper('backupList');
+    if (!list.length) { st.textContent = 'Na Disku zatím žádná záloha není.'; return; }
+    st.textContent = '';
+    const id = await modal({ title: 'Zálohy na Google Disku', body: '<p class="sub">Vyber, kterou zálohu obnovit.</p>', actions: [...list.slice(0, 8).map((f) => ({ label: `${fmtDate(new Date(f.date))} ${new Date(f.date).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}`, value: f.id })), { label: 'Zrušit', value: null }] });
+    if (!id) return;
+    st.textContent = 'Stahuji zálohu…';
+    const r = await callHelper('backupLoad', { id }, { timeout: 120000 });
+    await restoreText(r.content);
+  }));
+  const ls = box.querySelector('#lock-status');
+  box.querySelector('[data-act="lock-on"]')?.addEventListener('click', async () => {
+    try { await setupLock(); toast('Face ID zapnuto'); rerender(); } catch (e) { ls.textContent = `✕ Nepodařilo se zapnout (${e.name === 'NotAllowedError' ? 'zrušeno' : e.message}).`; }
+  });
+  box.querySelector('[data-act="lock-off"]')?.addEventListener('click', async () => { await disableLock(); toast('Zámek vypnut'); rerender(); });
+  box.querySelector('#lock-min')?.addEventListener('change', async (e) => { await saveSettings({ bezpecnost: { zamekMinuty: Number(e.target.value) } }); toast('Uloženo'); });
+}
+
+async function askPass() {
+  return modal({ title: 'Heslo zálohy', body: `<label class="field"><span>Heslo, kterým byla záloha zašifrovaná</span><input class="input" type="password" id="ap" value="${backupPass().replace(/"/g, '&quot;')}"></label>`, actions: [{ label: 'Zrušit', value: null }, { label: 'Pokračovat', kind: 'primary', value: (root) => root.querySelector('#ap').value }] });
 }
 
 function renderTexts(box, s) {
@@ -236,8 +302,12 @@ function renderTexts(box, s) {
   }));
 }
 
-function renderConnections(box, s) {
+async function renderConnections(box, s) {
   const p = s.propojeni || {};
+  const spent = await aiSpent();
+  const lastSync = (await get('settings', 'sync:last'))?.value;
+  let code = '';
+  helperCode().then((c) => { code = c; }).catch(() => {});
   box.innerHTML = String(html`
     <div class="page-head"><h2>Propojení</h2></div>
     <div class="card">
@@ -247,13 +317,57 @@ function renderConnections(box, s) {
       <div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" data-act="mapy-save">Uložit a vyzkoušet</button></div>
       <p class="sub" id="mapy-status" style="margin-bottom:0"></p>
     </div>
-    <div class="card"><div class="card-title"><h3>Google (Kalendář, Gmail, Disk)</h3><span class="tag">etapa 7</span></div><p class="sub" style="margin:0">Pomocník pod účtem KominictviJK – čtení poptávek a nákupů z Gmailu, posílání e-mailů, kalendář „Kominictví“, zálohy na Disk.</p></div>
-    <div class="card"><div class="card-title"><h3>AI (Claude)</h3><span class="tag">etapa 7</span></div><p class="sub" style="margin:0">Čtení štítků, účtenek, faktur a screenshotů poptávek.</p></div>
-    <div class="card"><div class="card-title"><h3>Banka</h3><span class="tag">etapa 7</span></div><p class="sub" style="margin:0">Párování plateb podle VS a návrhy nákladů z plateb kartou.</p></div>`);
-  box.querySelector('[data-act="mapy-save"]').addEventListener('click', async () => {
-    const k = box.querySelector('#mapy-key').value.trim();
+
+    <div class="card">
+      <div class="card-title"><h3>Google – Kalendář, Gmail, Disk</h3>${hasHelper() ? html`<span class="tag ok">spojeno</span>` : html`<span class="tag warn">nenastaveno</span>`}</div>
+      <p class="sub" style="margin-top:0">Malý pomocník běží pod tvým účtem KominictviJK@gmail.com. Posílá e-maily se zprávou a fakturou, hledá v Gmailu poptávky a nákupy, zapisuje návštěvy do Google Kalendáře a každý den uloží zálohu na Disk. Nastavuje se jednou, asi 10 minut.</p>
+      <ol class="steps-list">
+        <li><button class="btn small soft" data-act="copy-code">Zkopírovat kód pomocníka</button> <span class="sub" id="copy-status"></span></li>
+        <li>Otevři <b>script.google.com</b> přihlášený jako <b>KominictviJK@gmail.com</b> → <b>Nový projekt</b>. Smaž, co tam je, vlož kód a ulož (ikona diskety). Projekt pojmenuj „Kominictví pomocník“.</li>
+        <li>Nahoře vyber funkci <b>povolitPristup</b> → <b>Spustit</b> → <b>Zkontrolovat oprávnění</b> → vyber účet → <b>Rozšířené</b> → <b>Přejít na Kominictví pomocník</b> → <b>Povolit</b>.</li>
+        <li>Vpravo nahoře <b>Nasadit → Nové nasazení</b> → ozubené kolo → <b>Webová aplikace</b>. Spustit jako: <b>Já</b>, Kdo má přístup: <b>Kdokoli</b> → <b>Nasadit</b>.</li>
+        <li>Zkopíruj <b>adresu webové aplikace</b> (končí na /exec) a vlož ji sem:</li>
+      </ol>
+      <label class="field"><span>Adresa pomocníka</span><input class="input" id="g-url" value="${p.googleUrl || ''}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn primary" data-act="g-save">Uložit a vyzkoušet</button>
+        ${hasHelper() ? html`<button class="btn soft" data-act="g-sync">Synchronizovat teď</button>` : ''}
+      </div>
+      <p class="sub" id="g-status" style="margin-bottom:0">${lastSync ? `Naposledy synchronizováno ${fmtDate(new Date(lastSync))} v ${new Date(lastSync).toLocaleTimeString('cs-CZ', { hour: '2-digit', minute: '2-digit' })}. Synchronizace běží sama po otevření aplikace (nejvýš co 30 minut).` : ''}</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h3>AI (Claude)</h3>${hasAi() ? html`<span class="tag ok">klíč zadán</span>` : html`<span class="tag warn">chybí klíč</span>`}</div>
+      <p class="sub" style="margin-top:0">Přečte účtenku, štítek kotle, fakturu za materiál nebo screenshot poptávky a vyplní to za tebe. Platí se jen za použití – při běžném provozu desítky korun měsíčně.</p>
+      <ol class="steps-list">
+        <li>Na <b>platform.claude.com</b> se přihlas (stačí e-mail KominictviJK) a v <b>Billing</b> dobij kredit (stačí 5 $).</li>
+        <li>V <b>API keys → Create key</b> vytvoř klíč „Kominictví iPad“, zkopíruj ho a vlož sem.</li>
+      </ol>
+      <label class="field"><span>API klíč</span><input class="input" type="password" id="ai-key" value="${p.aiKey || ''}" placeholder="sk-ant-…" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div class="field" style="margin-top:8px"><span>Model</span><div class="chips">
+        ${[['claude-haiku-4-5-20251001', 'Rychlý a levný (doporučeno)'], ['claude-sonnet-5-5', 'Přesnější, dražší']].map(([k, l]) => html`<label class="chip"><input type="radio" name="ai-m" value="${k}" ${(p.aiModel || 'claude-haiku-4-5-20251001') === k ? 'checked' : ''}> ${l}</label>`)}
+      </div></div>
+      <div style="display:flex;gap:10px;margin-top:10px"><button class="btn primary" data-act="ai-save">Uložit a vyzkoušet</button></div>
+      <p class="sub" id="ai-status" style="margin-bottom:0">Tento měsíc: ${spent.calls} ${spent.calls === 1 ? 'dotaz' : spent.calls >= 2 && spent.calls <= 4 ? 'dotazy' : 'dotazů'} · přibližně ${spent.czk.toFixed(spent.czk < 10 ? 1 : 0).replace('.', ',')} Kč</p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><h3>Banka</h3>${p.fioToken ? html`<span class="tag ok">napojeno</span>` : html`<span class="tag">ruční výpis</span>`}</div>
+      <p class="sub" style="margin-top:0">Platby na účet se samy spárují s fakturami a QR platbami podle variabilního symbolu. Platby kartou z podnikatelského účtu se objeví ve Financích → Náklady „ke kontrole“.</p>
+      <label class="field"><span>Token Fio banky (jen pokud budeš mít Fio)</span><input class="input" type="password" id="fio" value="${p.fioToken || ''}" placeholder="Fio internetbanking → Nastavení → API → Přidat token (jen čtení)" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <button class="btn primary" data-act="fio-save">Uložit</button>
+        ${p.fioToken && hasHelper() ? html`<button class="btn soft" data-act="fio-run">Načíst platby teď</button>` : ''}
+        <label class="btn soft">Nahrát výpis z banky (CSV)<input type="file" accept=".csv,text/csv,text/plain" id="csv" hidden></label>
+      </div>
+      <p class="sub" id="bank-status" style="margin-bottom:0">Jiná banka než Fio: jednou za čas stáhni výpis v CSV a nahraj ho sem.</p>
+    </div>`);
+
+  const q = (sel) => box.querySelector(sel);
+  q('[data-act="mapy-save"]').addEventListener('click', async () => {
+    const k = q('#mapy-key').value.trim();
     await saveSettings({ propojeni: { mapyKey: k } });
-    const st = box.querySelector('#mapy-status');
+    const st = q('#mapy-status');
     if (!k) { st.textContent = 'Klíč smazán.'; return; }
     st.textContent = 'Zkouším…';
     try {
@@ -262,4 +376,74 @@ function renderConnections(box, s) {
       if (g) await saveSettings({ lhuty: { domovGps: { lat: g.lat, lng: g.lng, addr: settings().lhuty.domov } } });
     } catch (e) { st.textContent = `✕ ${e.message}`; }
   });
+  q('[data-act="copy-code"]').addEventListener('click', async () => {
+    const st = q('#copy-status');
+    try {
+      if (!code) code = await helperCode();
+      await navigator.clipboard.writeText(code);
+      st.textContent = '✓ Zkopírováno – teď ho vlož do script.google.com';
+    } catch {
+      const r = await modal({ title: 'Kód pomocníka', body: String(html`<p class="sub">Označ celý text (ťukni dovnitř → Vybrat vše) a zkopíruj.</p><textarea rows="12" style="width:100%;font-family:monospace;font-size:12px" readonly>${code}</textarea>`) });
+      void r;
+    }
+  });
+  q('[data-act="g-save"]').addEventListener('click', async () => {
+    const url = q('#g-url').value.trim();
+    const st = q('#g-status');
+    await ensureToken();
+    await saveSettings({ propojeni: { googleUrl: url } });
+    if (!url) { st.textContent = 'Adresa smazána.'; return; }
+    if (!/^https:\/\/script\.google\.com\/macros\/s\/.+\/exec/.test(url)) { st.textContent = '✕ Adresa má vypadat jako https://script.google.com/macros/s/…/exec'; return; }
+    st.textContent = 'Zkouším spojení…';
+    try {
+      const r = await callHelper('ping', {}, { timeout: 30000 });
+      st.textContent = `✓ Funguje. Pomocník běží pod účtem ${r.email || 'Google'}. Spouštím první synchronizaci…`;
+      const sr = await runSync();
+      st.textContent = `✓ Funguje (${r.email || 'Google'}). ${sr}`;
+      setTimeout(() => renderConnections(box, settings()), 2500);
+    } catch (e) { st.textContent = `✕ ${e.message}`; }
+  });
+  q('[data-act="g-sync"]')?.addEventListener('click', async () => {
+    const st = q('#g-status');
+    st.textContent = 'Synchronizuji…';
+    try { st.textContent = `✓ ${await runSync()}`; } catch (e) { st.textContent = `✕ ${e.message}`; }
+  });
+  q('[data-act="ai-save"]').addEventListener('click', async () => {
+    const k = q('#ai-key').value.trim();
+    const st = q('#ai-status');
+    await saveSettings({ propojeni: { aiKey: k, aiModel: box.querySelector('input[name="ai-m"]:checked').value } });
+    if (!k) { st.textContent = 'Klíč smazán.'; return; }
+    st.textContent = 'Zkouším…';
+    try { await testAi(); st.textContent = '✓ Funguje. Účtenky, štítky i poptávky se teď budou číst samy.'; } catch (e) { st.textContent = `✕ ${e.message}`; }
+  });
+  q('[data-act="fio-save"]').addEventListener('click', async () => {
+    await saveSettings({ propojeni: { fioToken: q('#fio').value.trim() } });
+    toast('Uloženo');
+    renderConnections(box, settings());
+  });
+  q('[data-act="fio-run"]')?.addEventListener('click', async () => {
+    const st = q('#bank-status');
+    st.textContent = 'Načítám platby…';
+    try { const r = await fetchBank(); st.textContent = `✓ Spárováno plateb: ${r.paired} · nových nákladů ke kontrole: ${r.suggested}`; } catch (e) { st.textContent = `✕ ${e.message}`; }
+  });
+  q('#csv').addEventListener('change', async (e) => {
+    const f = e.target.files?.[0]; if (!f) return;
+    const st = q('#bank-status');
+    try {
+      const buf = await f.arrayBuffer();
+      let text = new TextDecoder('utf-8').decode(buf);
+      if (text.includes('�')) text = new TextDecoder('windows-1250').decode(buf);
+      const txs = parseStatement(text);
+      if (!txs.length) { st.textContent = '✕ Ve výpisu jsem nenašel žádné platby. Zkus export ve formátu CSV.'; return; }
+      const r = await applyTransactions(txs);
+      st.textContent = `✓ Načteno ${txs.length} plateb · spárováno ${r.paired} · nových nákladů ke kontrole ${r.suggested}`;
+    } catch (err) { st.textContent = `✕ ${err.message}`; }
+  });
+}
+
+async function runSync() {
+  const cal = await syncCalendar();
+  const mails = await scanGmail();
+  await put('settings', { key: 'sync:last', value: new Date().toISOString() });
+  return `Kalendář: ${cal?.pushed ?? 0} záznamů zapsáno · Gmail: ${mails} ${mails === 1 ? 'nová položka' : mails >= 2 && mails <= 4 ? 'nové položky' : 'nových položek'} ke kontrole.`;
 }

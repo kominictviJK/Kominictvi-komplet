@@ -3,6 +3,21 @@ import { all } from '../db.js';
 import { getCustomer, saveCustomer, emptyCustomer, emptyObject, emptyChimney, findDuplicates, displayName, TYPES, DELIVERY, APPLIANCES } from '../customers.js';
 import { html, toast, modal } from '../ui.js';
 import { hasKey, completeAddress } from '../mapy.js';
+import { hasHelper, callHelper } from '../google.js';
+
+// ARES (rejstřík firem): přímo, a když to prohlížeč nepustí, přes pomocníka Google
+async function aresLookup(ico) {
+  try {
+    const res = await fetch(`https://ares.gov.cz/ekonomicke-subjekty-v-be/rest/ekonomicke-subjekty/${ico}`);
+    if (res.status === 404) throw new Error(`IČO ${ico} v ARES není`);
+    const j = await res.json(); const s = j.sidlo || {};
+    const ok = (x) => x !== undefined && x !== null && x !== '';
+    return { name: j.obchodniJmeno, dic: j.dic || '', street: [s.nazevUlice || s.nazevCastiObce || s.nazevObce, [s.cisloDomovni, s.cisloOrientacni].filter(ok).join('/')].filter(ok).join(' '), city: s.nazevObce || '', zip: s.psc ? String(s.psc).replace(/(\d{3})(\d{2})/, '$1 $2') : '', district: s.nazevOkresu || '' };
+  } catch (e) {
+    if (/v ARES není/.test(e.message) || !hasHelper()) throw e.message.includes('ARES') ? e : new Error('ARES se nepodařilo načíst – zkus to později');
+    return callHelper('ares', { ico });
+  }
+}
 
 let draft = null;
 
@@ -45,7 +60,7 @@ function draw(el, editId, go) {
           <label class="field"><span>Příjmení *</span><input id="f-last" data-bind="lastName" value="${d.lastName}" autocomplete="off"></label>
         ` : html`
           <label class="field"><span>Název *</span><input id="f-name" data-bind="name" value="${d.name}" autocomplete="off"></label>
-          <label class="field"><span>IČO</span><input id="f-ico" data-bind="ico" value="${d.ico}" inputmode="numeric" placeholder="doplnění z ARES přijde v etapě 7"></label>
+          <label class="field"><span>IČO</span><span style="display:flex;gap:8px"><input id="f-ico" data-bind="ico" value="${d.ico}" inputmode="numeric" placeholder="8 číslic" style="flex-grow:1"><button type="button" class="btn small soft" data-act="ares">Načíst z ARES</button></span></label>
         `}
         ${d.phones.map((p, i) => html`
           <label class="field"><span>Telefon ${d.phones.length > 1 ? i + 1 : ''}</span>
@@ -127,6 +142,18 @@ function draw(el, editId, go) {
     try { toast((await completeAddress(o)) ? 'Doplněno z Mapy.cz' : 'Adresu se nepodařilo najít'); } catch (e) { toast(e.message); }
     redraw();
   }));
+  el.querySelector('[data-act="ares"]')?.addEventListener('click', async () => {
+    const ico = String(d.ico || '').replace(/\D/g, '');
+    if (ico.length !== 8) { toast('IČO má 8 číslic'); return; }
+    try {
+      const r = await aresLookup(ico);
+      d.name = r.name || d.name; d.ico = ico; if (r.dic) d.dic = r.dic;
+      const a = d.objects[0].address;
+      if (!a.street && !a.city) Object.assign(a, { street: r.street, city: r.city, zip: r.zip, district: r.district, lat: null, lng: null });
+      toast(`Načteno z ARES: ${r.name}`);
+    } catch (e) { toast(e.message); }
+    redraw();
+  });
   el.querySelector('[data-act="cancel"]').addEventListener('click', () => { draft = null; });
   el.querySelectorAll('[data-act="save"]').forEach((b) => b.addEventListener('click', () => save(go)));
 }

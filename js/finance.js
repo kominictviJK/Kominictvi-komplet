@@ -92,6 +92,18 @@ export const CATEGORIES = [
 ];
 export const catLabel = (k) => (CATEGORIES.find((c) => c[0] === k) || [])[1] || k;
 
+// Odhad kategorie podle obchodníka (platby kartou z výpisu)
+export function guessCategory(text = '') {
+  const t = text.toLowerCase();
+  if (/benzin|shell|omv|\bmol\b|orlen|eurooil|robin oil|čerpac|cerpac|tank ono|globus.*čs/.test(t)) return 'tankovani';
+  if (/hornbach|\bobi\b|bauhaus|stavebnin|kominick|komínov|kominov|schiedel|hasit|ferona/.test(t)) return 'material';
+  if (/\bo2\b|t-mobile|vodafone/.test(t)) return 'telefon';
+  if (/pojišť|pojist|kooperativa|allianz|čpp|generali|uniqa/.test(t)) return 'pojisteni';
+  if (/google ads|facebook|meta platforms|firmy\.cz|seznam\.cz/.test(t)) return 'reklama';
+  if (/pneu|autoservis|stk|dálnič|dalnic|parkov/.test(t)) return 'auto';
+  return 'ostatni';
+}
+
 export async function saveExpense(e) {
   const x = { id: uid('x_'), date: isoDate(), amount: 0, category: 'ostatni', note: '', photo: null, jobRef: null, returned: false, trial: trial(), createdAt: new Date().toISOString(), ...e };
   x.amount = Number(String(x.amount).replace(',', '.')) || 0;

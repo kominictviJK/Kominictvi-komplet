@@ -15,6 +15,9 @@ import { signaturePad } from '../signature.js';
 import { shareDocument } from '../share.js';
 import { html, raw, icon, toast, modal, fmtMoney, fmtDate, parseIso } from '../ui.js';
 import { uid } from '../db.js';
+import { hasAi, readLabel } from '../ai.js';
+import { hasHelper } from '../google.js';
+import { photoData } from './finance.js';
 import { PURPOSES, P_FLUES, P_LINERS, CLEANING, ROOFS, CONTRACTORS } from '../protocol.js';
 
 const STEPS = [['formular', 'Zpráva'], ['platba', 'Platba'], ['podpis', 'Podpis'], ['hotovo', 'Odeslání']];
@@ -184,6 +187,22 @@ function stepForm(box, ctx) {
     d.chimneys[ki].appliances.splice(ai, 1);
     await saveDraft(d); redraw();
   }));
+  box.querySelectorAll('[data-label]').forEach((inpEl) => inpEl.addEventListener('change', async () => {
+    const f = inpEl.files?.[0]; if (!f) return;
+    const [ki, ai] = inpEl.dataset.label.split('.').map(Number);
+    const lbl = inpEl.closest('label'); lbl.firstChild.textContent = 'Čtu štítek…';
+    try {
+      const r = await readLabel(await photoData(f));
+      const k = d.chimneys[ki], a = k.appliances[ai];
+      if (APPLIANCE_KINDS.includes(r.kind)) a.kind = r.kind;
+      if (r.brand) a.brand = r.brand;
+      if (r.kw) a.kw = String(r.kw).replace('.', ',');
+      if (r.flueDiameter && !a.flue.diameter) a.flue.diameter = String(r.flueDiameter);
+      if (ai === 0 && ['tuha', 'plyn', 'kapalna'].includes(r.fuel)) { k.fuel = r.fuel; if (r.fuel === 'plyn') k.condensing = !!r.condensing; }
+      await saveDraft(d); redraw();
+      toast('Štítek přečten – zkontroluj údaje');
+    } catch (e) { toast(e.message); lbl.firstChild.textContent = 'Vyfotit štítek'; }
+  }));
   box.querySelector('[data-act="next"]').addEventListener('click', () => goStep(ctx, 'platba'));
 }
 
@@ -203,7 +222,7 @@ function chimneyForm(k, i, total) {
         const e = a.flue.elbows;
         return html`
           <div class="subcard">
-            <div class="card-title"><h3>Spotřebič${n}</h3>${k.appliances.length > 1 ? html`<button class="btn small" data-del-ap="${i}.${ai}">Odebrat</button>` : ''}</div>
+            <div class="card-title"><h3>Spotřebič${n}</h3><span style="display:flex;gap:8px">${hasAi() ? html`<label class="btn small soft">Vyfotit štítek<input type="file" accept="image/*" capture="environment" data-label="${i}.${ai}" hidden></label>` : ''}${k.appliances.length > 1 ? html`<button class="btn small" data-del-ap="${i}.${ai}">Odebrat</button>` : ''}</span></div>
             ${row('Druh', html`<div class="chips">${APPLIANCE_KINDS.map((x) => chipOne(`${ap}.kind`, x, x, a.kind))}</div>
               ${a.kind === 'jiný' ? html`<div style="margin-top:8px">${inp(`${ap}.kindOther`, a.kindOther, { ph: 'jaký spotřebič' })}</div>` : ''}`)}
             ${row('Značka a výkon', html`<div class="inline">${inp(`${ap}.brand`, a.brand, { ph: 'značka / typ', w: '260px' })}${inp(`${ap}.kw`, a.kw, { ph: 'kW', mode: 'decimal', w: '90px' })}
@@ -441,7 +460,7 @@ function stepDone(box, ctx) {
         <span class="done-check">${icon('check')}</span>
         <div><h2>${{ doklad: 'Doklad', protokol: 'Protokol' }[d.kind] || 'Zpráva'} č. ${d.no}</h2><span class="sub">${fmtDate(parseIso(d.date))} · ${fmtMoney(paymentTotal(d.payment.items))} · ${METHODS[d.payment.method]}</span></div>
       </div>
-      <p class="sub">Odeslat zákazníkovi: otevře se nabídka Sdílet, kde vybereš WhatsApp, Mail nebo Tisk. Text zprávy se přiloží sám.</p>
+      <p class="sub">Odeslat zákazníkovi: otevře se nabídka Sdílet, kde vybereš WhatsApp, Mail nebo Tisk. Text zprávy se přiloží sám.${hasHelper() && customer.email ? ' E-mail odejde rovnou z KominictviJK@gmail.com.' : ''}</p>
       <div class="share-row">
         ${btn('whatsapp', 'WhatsApp')}
         ${btn('email', 'E-mail')}

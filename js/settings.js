@@ -82,9 +82,9 @@ export function guideSteps(s = settings()) {
     { label: 'Podpis', done: !!s.firma.podpis },
     { label: 'Číslo účtu', done: !!s.firma.ucet },
     { label: 'Ceník', done: true },
-    { label: 'Pomocník Google', done: !!s.propojeni?.google },
-    { label: 'Mapy.cz', done: !!s.propojeni?.mapy },
-    { label: 'AI (Claude)', done: !!s.propojeni?.ai },
+    { label: 'Pomocník Google', done: !!s.propojeni?.googleUrl },
+    { label: 'Mapy.cz', done: !!s.propojeni?.mapyKey },
+    { label: 'AI (Claude)', done: !!s.propojeni?.aiKey },
     { label: 'Import zákazníků', done: !!s.importHotovo },
   ];
 }

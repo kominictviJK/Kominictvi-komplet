@@ -1,5 +1,6 @@
 // Obrazovka Dnes – dnešní domluvení zákazníci, ranní přehled, připomínky a souhrn dne
 import { byIndex, all, put, get } from '../db.js';
+import { pending } from '../sync.js';
 import { settings } from '../settings.js';
 import { displayName } from '../customers.js';
 import { FUEL_LABEL } from '../lhuty.js';
@@ -51,6 +52,8 @@ export async function render(el, { go } = {}) {
   const notes = active.filter((v) => v.customer.note || v.note);
   const url = routeUrl(active.filter((v) => v.status === 'planned'), (await homePosition()) || s.lhuty.domovGps || { lat: 49.7306, lng: 17.2989 });
   const [tom, week] = await Promise.all([load(tomorrow(today)), load(addDays(tIso, 7))]);
+  const queue = await pending();
+  const queueMail = queue.filter((q) => q.type === 'mail').length, queueExp = queue.filter((q) => q.type === 'expense').length;
   const tomTodo = tom.filter((v) => v.status === 'planned' && !v.remindedEvening);
   const weekTodo = week.filter((v) => v.status === 'planned' && !v.remindedWeek);
   const docs = (await all('documents')).filter((d) => d.status === 'final' && d.date === tIso);
@@ -104,6 +107,14 @@ export async function render(el, { go } = {}) {
         <span class="grow">${tomTodo.length ? html`<b>Zítra ${plural(tomTodo.length, 'zákazník', 'zákazníci', 'zákazníků')}</b> – pošli večerní připomínky.` : ''} ${weekTodo.length ? html`<b>Za týden ${plural(weekTodo.length, 'zákazník', 'zákazníci', 'zákazníků')}</b> – připomínka týden předem.` : ''}</span>
         ${tomTodo.length ? html`<button class="btn small primary" data-remind="vecer">Zítřejší připomínky</button>` : ''}
         ${weekTodo.length ? html`<button class="btn small" data-remind="tyden">Za týden</button>` : ''}
+      </div>` : ''}
+
+    ${queueMail || queueExp ? html`
+      <div class="card remind">
+        <span>${icon('inbox')}</span>
+        <span class="grow">${queueMail ? html`<b>${plural(queueMail, 'nová poptávka', 'nové poptávky', 'nových poptávek')}</b> z e-mailu. ` : ''}${queueExp ? html`<b>${plural(queueExp, 'nákup', 'nákupy', 'nákupů')}</b> ke kontrole v nákladech.` : ''}</span>
+        ${queueMail ? html`<a class="btn small primary" href="#poptavky-poptavky">Poptávky</a>` : ''}
+        ${queueExp ? html`<a class="btn small" href="#finance-naklady">Náklady</a>` : ''}
       </div>` : ''}
 
     ${visits.length ? '' : html`<div class="card empty">Dnes nemáš nic domluveného. Zákazníky na další dny najdeš v Poptávkách a Kalendáři.</div>`}

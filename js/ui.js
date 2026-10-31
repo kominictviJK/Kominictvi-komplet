@@ -70,7 +70,7 @@ export function toast(msg) {
 }
 
 // Jednoduché dialogové okno; vrací Promise s hodnotou tlačítka
-export function modal({ title, body = '', actions = [{ label: 'Zavřít', value: null }] }) {
+export function modal({ title, body = '', actions = [{ label: 'Zavřít', value: null }], onOpen = null }) {
   return new Promise((resolve) => {
     const root = document.getElementById('modal-root');
     root.innerHTML = String(html`
@@ -89,5 +89,6 @@ export function modal({ title, body = '', actions = [{ label: 'Zavřít', value:
       root.innerHTML = '';
       resolve(value);
     }));
+    if (onOpen) onOpen(root);
   });
 }

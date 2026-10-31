@@ -1,6 +1,9 @@
 // Poptávky – trychtýř: ① Oslovit → ② Čeká na odpověď → ③ Poptávky a výjezdy
-import { all, get, put } from '../db.js';
-import { displayName, matches, listCustomers } from '../customers.js';
+import { all, get, put, del } from '../db.js';
+import { displayName, matches, listCustomers, saveCustomer, emptyCustomer, norm } from '../customers.js';
+import { hasAi, readInquiry } from '../ai.js';
+import { pending } from '../sync.js';
+import { photoData } from './finance.js';
 import { DUE_TAG } from '../lhuty.js';
 import {
   contactCandidates, groupByCity, createInquiry, listInquiries, updateInquiry, scheduleAppointment, createTrip, upcomingTrips,
@@ -23,11 +26,13 @@ export async function render(el, { args, go }) {
       <h1>Poptávky</h1>
       <div class="seg">${tabs.map(([k, l, n]) => html`<button class="${state.tab === k ? 'on' : ''}" data-tab="${k}">${l} <span class="count">${n}</span></button>`)}</div>
       <span class="grow"></span>
+      ${hasAi() ? html`<button class="btn soft" data-act="ai">Ze zprávy</button>` : ''}
       <button class="btn primary" data-act="new">${icon('plus')} Nová poptávka</button>
     </div>
     <div id="tab"></div>`);
   el.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { state.tab = b.dataset.tab; render(el, { args: [], go }); }));
   el.querySelector('[data-act="new"]').addEventListener('click', () => newInquiry(() => render(el, { args: [], go }), go));
+  el.querySelector('[data-act="ai"]')?.addEventListener('click', () => fromMessage(() => render(el, { args: [], go }), go));
   const box = el.querySelector('#tab');
   const rerender = () => render(el, { args: [], go });
   if (state.tab === 'oslovit') tabContact(box, cands, rerender);
@@ -133,8 +138,13 @@ async function tabOpen(box, open, customers, rerender) {
   for (const t of trips) days.set(t.date, { date: t.date, trip: t, appts: [] });
   for (const a of appts.filter((x) => x.status === 'planned')) { if (!days.has(a.date)) days.set(a.date, { date: a.date, trip: null, appts: [] }); days.get(a.date).appts.push(a); }
   const dayList = [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
+  const mails = await pending('mail');
 
   box.innerHTML = String(html`
+    ${mails.length ? html`<div class="card" style="border-left:4px solid var(--gold);margin-bottom:12px">
+      <div class="card-title"><h3>Z e-mailu (${mails.length})</h3><span class="sub">zprávy z KominictviJK@gmail.com, které vypadají jako poptávka</span></div>
+      ${mails.slice(0, 8).map((m) => html`<div class="kv"><span>${fmtDateShort(parseIso(m.date))}</span><span style="flex-grow:1"><b>${m.parsed?.isMayorConfirmation ? 'Potvrzení termínu od obce' : m.title || '(bez předmětu)'}</b><br><small class="sub">${(m.from || '').replace(/<.*>/, '').trim()}${m.parsed?.note ? ` · ${m.parsed.note}` : ''}</small></span><button class="btn small primary" data-mail="${m.id}">Zpracovat</button><button class="btn small" data-mailno="${m.id}">Není poptávka</button></div>`)}
+    </div>` : ''}
     <div class="grid c2" style="align-items:start;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
       <div>
         <div class="chips" style="margin-bottom:10px">${[['vse', 'Vše'], ['kontrola', 'Kontrola a čištění'], ['ostatni', 'Ostatní práce']].map(([k, l]) => html`<button class="chip ${state.kind === k ? 'on' : ''}" data-kind="${k}">${l}</button>`)}</div>
@@ -179,6 +189,50 @@ async function tabOpen(box, open, customers, rerender) {
     if (ok) { await updateInquiry(b.dataset.drop, { stage: 'lost' }); rerender(); }
   }));
   box.querySelector('[data-act="trip"]').addEventListener('click', () => newTrip(rerender));
+  box.querySelectorAll('[data-mail]').forEach((b) => b.addEventListener('click', async () => {
+    const m = mails.find((x) => x.id === b.dataset.mail);
+    let parsed = m.parsed;
+    if (!parsed && hasAi()) { b.textContent = 'Čtu…'; try { parsed = await readInquiry({ text: `${m.title}\n${m.from}\n${m.text}` }); } catch (e) { toast(e.message); } }
+    const done = await applyParsed(parsed || { note: m.title }, rerender, m.text);
+    if (done) { await del('queue', m.id); rerender(); }
+  }));
+  box.querySelectorAll('[data-mailno]').forEach((b) => b.addEventListener('click', async () => { await del('queue', b.dataset.mailno); toast('Vyřazeno'); rerender(); }));
+}
+
+// Poptávka ze zprávy: vložený text nebo screenshot (SMS, WhatsApp, Messenger…) → AI vyplní
+async function fromMessage(done, go) {
+  const r = await modal({
+    title: 'Poptávka ze zprávy',
+    body: String(html`<p class="sub" style="margin-top:0">Vlož text zprávy, nebo přidej screenshot. Aplikace najde jméno, adresu, telefon a co zákazník chce. Potvrzení termínu od obce rovnou založí výjezd.</p>
+      <label class="field"><span>Text zprávy</span><textarea id="fm-t" rows="5" placeholder="Dobrý den, potřeboval bych vyčistit komín…"></textarea></label>
+      <label class="btn soft" style="margin-top:10px">Přidat screenshot<input type="file" accept="image/*" id="fm-i" hidden></label> <span class="sub" id="fm-n"></span>`),
+    actions: [{ label: 'Zrušit', value: null }, { label: 'Přečíst', kind: 'primary', value: async (root) => ({ text: root.querySelector('#fm-t').value.trim(), file: root.querySelector('#fm-i').files?.[0] || null }) }],
+    onOpen: (root) => root.querySelector('#fm-i').addEventListener('change', (e) => { root.querySelector('#fm-n').textContent = e.target.files?.[0] ? '✓ screenshot přidán' : ''; }),
+  });
+  if (!r || (!r.text && !r.file)) return;
+  toast('Čtu zprávu…');
+  try {
+    const parsed = await readInquiry({ text: r.text, image: r.file ? await photoData(r.file) : null });
+    await applyParsed(parsed, done, r.text);
+  } catch (e) { toast(e.message); }
+}
+
+// Výsledek AI → výjezd (potvrzení obce) nebo předvyplněná poptávka
+async function applyParsed(p, done, original = '') {
+  if (p.isMayorConfirmation && p.villageDate) {
+    const ok = await modal({ title: 'Potvrzení termínu od obce', body: String(html`<p>Založit <b>den v obci ${p.village || ''}</b> na <b>${fmtDayLong(parseIso(p.villageDate))}</b>?</p>`), actions: [{ label: 'Zrušit', value: false }, { label: 'Založit výjezd', value: true, kind: 'primary' }] });
+    if (!ok) return false;
+    await createTrip({ date: p.villageDate, type: 'obec', villages: p.village ? [p.village] : [], note: 'Potvrzeno obcí' });
+    toast('Výjezd založen'); done(); return true;
+  }
+  const customers = await listCustomers();
+  const digits = (x) => String(x || '').replace(/\D/g, '').slice(-9);
+  const ph = digits(p.phone);
+  let customer = (ph && customers.find((c) => (c.phones || []).some((x) => digits(x) === ph)))
+    || (p.lastName && customers.find((c) => norm(c.lastName) === norm(p.lastName) && (!p.city || c.objects.some((o) => norm(o.address.city) === norm(p.city))))) || null;
+  const preset = { kind: ['kontrola', 'revize', 'frezovani'].includes(p.kind) ? p.kind : 'ostatni', prefer: PREFS.includes(p.prefer) ? p.prefer : '', note: [p.prefer && !PREFS.includes(p.prefer) ? `hodí se ${p.prefer}` : '', p.note].filter(Boolean).join(' · '), desiredDate: /^\d{4}-\d{2}-\d{2}$/.test(p.desiredDate || '') ? p.desiredDate : '' };
+  if (!customer && (p.lastName || p.phone)) preset.newCustomer = p;
+  return newInquiry(done, null, { ...preset, customer, original });
 }
 
 async function newTrip(done) {
@@ -198,10 +252,15 @@ async function newTrip(done) {
 }
 
 // Nová poptávka: existující zákazník (hledání) nebo nový
-async function newInquiry(done, go) {
+async function newInquiry(done, go, preset = {}) {
   const customers = await listCustomers();
-  const st = { q: '', customer: null, objectId: null, kind: 'kontrola', prefer: '', note: '', desiredDate: '' };
+  const st = { q: '', customer: null, objectId: null, kind: 'kontrola', prefer: '', note: '', desiredDate: '', newCustomer: null, ...preset };
+  if (st.customer) st.objectId = st.customer.objects.find((o) => !preset.newCustomer?.city || norm(o.address.city) === norm(preset.newCustomer.city))?.id || st.customer.objects[0]?.id;
+  if (!KIND_LABEL[st.kind]) st.kind = Object.keys(KIND_LABEL).includes('ostatni') ? 'ostatni' : 'kontrola';
+  let resolveDone;
+  const finished = new Promise((r) => { resolveDone = r; });
   const root = document.getElementById('modal-root');
+  const nc = st.newCustomer;
   const draw = () => {
     const found = st.q.length >= 2 ? customers.filter((c) => matches(c, st.q)).slice(0, 6) : [];
     root.innerHTML = String(html`<div class="modal-back"><div class="modal wide" role="dialog" aria-modal="true" aria-label="Nová poptávka">
@@ -210,7 +269,9 @@ async function newInquiry(done, go) {
         ${st.customer.objects.length > 1 ? html`<div class="chips">${st.customer.objects.map((o) => html`<button class="chip ${st.objectId === o.id ? 'on' : ''}" data-obj="${o.id}">${o.address.street}</button>`)}</div>` : ''}`
       : html`<label class="search">${icon('search')}<input id="nq-q" value="${st.q}" placeholder="Hledej zákazníka – jméno, obec, telefon…" autocomplete="off"></label>
         ${found.map((c) => html`<button class="row pick" data-pick="${c.id}"><span class="main"><span class="title">${displayName(c)}</span><span class="meta">${c.objects[0]?.address.street}, ${c.objects[0]?.address.city}</span></span></button>`)}
-        <a class="btn soft" href="#zakaznik-novy" data-newc>+ Nový zákazník</a>`}
+        ${nc ? html`<button class="btn primary" data-create>+ Založit zákazníka: ${[nc.firstName, nc.lastName].filter(Boolean).join(' ')}${nc.street || nc.city ? `, ${[nc.street, nc.city].filter(Boolean).join(', ')}` : ''}${nc.phone ? `, ${fmtPhone(nc.phone)}` : ''}</button>` : ''}
+        <a class="btn soft" href="#zakaznik-novy" data-newc>+ Nový zákazník (formulář)</a>`}
+      ${st.original ? html`<details class="sub"><summary>Původní zpráva</summary><p style="white-space:pre-wrap">${st.original.slice(0, 1500)}</p></details>` : ''}
       <div class="field"><span>Co chce</span><div class="chips">${Object.entries(KIND_LABEL).map(([k, l]) => html`<button class="chip ${st.kind === k ? 'on' : ''}" data-k="${k}">${l}</button>`)}</div></div>
       <div class="field"><span>Kdy se mu hodí</span><div class="chips">${PREFS.map((p) => html`<button class="chip ${st.prefer === p ? 'on' : ''}" data-p="${p}">${p}</button>`)}</div></div>
       <div class="grid c2"><label class="field"><span>Chce termín (nepovinné)</span><input class="input" type="date" id="nq-date" value="${st.desiredDate}"></label>
@@ -226,15 +287,26 @@ async function newInquiry(done, go) {
     root.querySelectorAll('[data-obj]').forEach((b) => b.addEventListener('click', () => { st.objectId = b.dataset.obj; draw(); }));
     root.querySelectorAll('[data-k]').forEach((b) => b.addEventListener('click', () => { st.kind = b.dataset.k; draw(); }));
     root.querySelectorAll('[data-p]').forEach((b) => b.addEventListener('click', () => { st.prefer = st.prefer === b.dataset.p ? '' : b.dataset.p; draw(); }));
-    root.querySelector('[data-newc]')?.addEventListener('click', () => { root.innerHTML = ''; });
-    root.querySelector('[data-cancel]').addEventListener('click', () => { root.innerHTML = ''; });
+    root.querySelector('[data-newc]')?.addEventListener('click', () => { root.innerHTML = ''; resolveDone(false); });
+    root.querySelector('[data-create]')?.addEventListener('click', async () => {
+      const c = emptyCustomer();
+      Object.assign(c, { firstName: nc.firstName || '', lastName: nc.lastName || '', phones: [nc.phone || ''], email: nc.email || '', source: 'zpráva', delivery: nc.email && !nc.phone ? 'email' : 'whatsapp' });
+      Object.assign(c.objects[0].address, { street: nc.street || '', city: nc.city || '' });
+      if (nc.fuel === 'plyn') c.objects[0].chimneys[0].fuel = 'plyn';
+      try { const { completeAddress } = await import('../mapy.js'); await completeAddress(c.objects[0]); } catch { /* doplní se později */ }
+      st.customer = await saveCustomer(c); st.objectId = c.objects[0].id; customers.push(st.customer);
+      toast('Zákazník založen – detaily doplníš v kartě'); draw();
+    });
+    root.querySelector('[data-cancel]').addEventListener('click', () => { root.innerHTML = ''; resolveDone(false); });
     root.querySelector('[data-save]').addEventListener('click', async () => {
       await createInquiry({ customerId: st.customer.id, objectId: st.objectId, kind: st.kind, prefer: st.prefer, note: st.note, desiredDate: st.desiredDate, stage: 'open' });
       root.innerHTML = '';
       toast('Poptávka uložena');
       state.tab = 'poptavky';
       done();
+      resolveDone(true);
     });
   };
   draw();
+  return finished;
 }
