@@ -324,8 +324,8 @@ async function renderConnections(box, s) {
       <ol class="steps-list">
         <li><button class="btn small soft" data-act="copy-code">Zkopírovat kód pomocníka</button> <span class="sub" id="copy-status"></span></li>
         <li>Otevři <b>script.google.com</b> přihlášený jako <b>KominictviJK@gmail.com</b> → <b>Nový projekt</b>. Smaž, co tam je, vlož kód a ulož (ikona diskety). Projekt pojmenuj „Kominictví pomocník“.</li>
-        <li>Nahoře vyber funkci <b>povolitPristup</b> → <b>Spustit</b> → <b>Zkontrolovat oprávnění</b> → vyber účet → <b>Rozšířené</b> → <b>Přejít na Kominictví pomocník</b> → <b>Povolit</b>.</li>
-        <li>Vpravo nahoře <b>Nasadit → Nové nasazení</b> → ozubené kolo → <b>Webová aplikace</b>. Spustit jako: <b>Já</b>, Kdo má přístup: <b>Kdokoli</b> → <b>Nasadit</b>.</li>
+        <li>V editoru (ikona <b>&lt; &gt;</b> vlevo) vyber nahoře v rozbalovacím seznamu funkci <b>povolitPristup</b> → <b>Spustit</b> → <b>Zkontrolovat oprávnění</b> → vyber účet → <b>Rozšířená nastavení</b> → <b>Přejít na Kominictví pomocník</b> → <b>Povolit</b>.</li>
+        <li>Vpravo nahoře <b>Implementovat → Nová implementace</b> → ozubené kolo u „Vyberte typ“ → <b>Webová aplikace</b>. Spustit jako: <b>Já</b>, Kdo má přístup: <b>Kdokoli</b> → <b>Implementovat</b>.</li>
         <li>Zkopíruj <b>adresu webové aplikace</b> (končí na /exec) a vlož ji sem:</li>
       </ol>
       <label class="field"><span>Adresa pomocníka</span><input class="input" id="g-url" value="${p.googleUrl || ''}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
