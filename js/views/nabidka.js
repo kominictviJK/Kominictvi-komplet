@@ -39,7 +39,7 @@ function draw(el, o, c, go) {
       <button class="btn soft" data-act="preview">Náhled PDF</button>
       <button class="btn primary" data-act="send">Odeslat</button>
     </div>
-    <div class="grid" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start">
+    <div class="grid split" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start">
       <div>
         <div class="card">
           <label class="field"><span>Předmět nabídky</span><input class="input" id="o-subject" value="${o.subject}" placeholder="např. Vložkování komínu nerezovou vložkou Ø 150 mm"></label>

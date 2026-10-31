@@ -2,7 +2,7 @@
 import { all, put, get } from '../db.js';
 import { displayName, norm } from '../customers.js';
 import { paymentTotal, METHODS } from '../payment.js';
-import { createDraft, saveDraft } from '../visit.js';
+import { createDraft, saveDraft, visitDurations } from '../visit.js';
 import { invoiceState } from '../finance.js';
 import { html, toast, modal, parseIso, fmtDate, fmtMoney, monthName } from '../ui.js';
 
@@ -33,6 +33,7 @@ export async function render(el, { go }) {
   for (let i = 1; i <= (nums.at(-1) || 0); i++) if (!nums.includes(i)) gaps.push(i);
   const drafts = docs.filter((d) => d.status === 'draft' && d.no && d.no.endsWith(`/${m}/${y}`)).map((d) => d.no);
   const storno = docs.filter((d) => d.storno && d.date.startsWith(state.month)).length;
+  const durations = visitDurations(docs);
   const total = filtered.filter((r) => !r.storno && r.kind !== 'faktura').reduce((s, r) => s + r.amount, 0);
 
   el.innerHTML = String(html`
@@ -51,6 +52,7 @@ export async function render(el, { go }) {
         : html`✓ Číselná řada v pořádku: 1–${nums.at(-1)}/${m}/${y} bez mezer${storno ? ` · ${storno} storno` : ''}.`) : 'Tento měsíc zatím žádné dokumenty.'}
       <span class="grow"></span><b>${filtered.length} dokumentů · ${fmtMoney(total)}</b>
     </div>
+    ${durations.length ? html`<p class="sub" style="margin:-4px 2px 12px">Průměrná délka návštěvy: ${durations.map((x) => `${x.label} ${x.avg} min (${x.count}×)`).join(' · ')}</p>` : ''}
     <div class="list">
       ${filtered.length ? filtered.map((r) => {
         const c = cust.get(r.customerId);

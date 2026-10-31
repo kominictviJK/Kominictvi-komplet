@@ -1,5 +1,6 @@
 // Nastavení aplikace – výchozí hodnoty podle knihy aplikace
 import { get, put } from './db.js';
+import { applyCatalog } from './catalog.js';
 
 export const DEFAULTS = {
   firma: {
@@ -51,6 +52,7 @@ let cache = null;
 export async function loadSettings() {
   const rec = await get('settings', 'app');
   cache = deepMerge(structuredClone(DEFAULTS), rec?.value || {});
+  applyCatalog(cache.katalog);
   return cache;
 }
 
@@ -61,6 +63,7 @@ export function settings() {
 
 export async function saveSettings(patch) {
   cache = deepMerge(cache || structuredClone(DEFAULTS), patch);
+  applyCatalog(cache.katalog);
   await put('settings', { key: 'app', value: cache, updatedAt: new Date().toISOString() });
   return cache;
 }

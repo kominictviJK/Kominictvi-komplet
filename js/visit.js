@@ -182,3 +182,18 @@ export async function finalize(draft, pdfBuilder) {
   }
   return doc;
 }
+
+// Měření délky návštěvy: od otevření formuláře po dokončení zprávy; průměr podle druhu topení
+export function visitDurations(docs) {
+  const groups = { tuha: [], plyn: [], kondenzacni: [], ostatni: [] };
+  for (const d of docs) {
+    if (d.status !== 'final' || d.storno || !d.createdAt || !d.finalizedAt) continue;
+    const min = (new Date(d.finalizedAt) - new Date(d.createdAt)) / 60000;
+    if (min < 5 || min > 180) continue;
+    const k = d.chimneys?.[0];
+    const g = d.kind !== 'zprava' ? 'ostatni' : k?.fuel === 'plyn' ? (k.condensing ? 'kondenzacni' : 'plyn') : k?.fuel === 'tuha' ? 'tuha' : 'ostatni';
+    groups[g].push(min);
+  }
+  const LBL = { tuha: 'tuhá paliva', plyn: 'plyn', kondenzacni: 'kondenzační', ostatni: 'ostatní' };
+  return Object.entries(groups).filter(([, v]) => v.length).map(([g, v]) => ({ group: g, label: LBL[g], count: v.length, avg: Math.round(v.reduce((a, b) => a + b, 0) / v.length) }));
+}

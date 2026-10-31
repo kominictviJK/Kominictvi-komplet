@@ -14,7 +14,7 @@ export const LINERS = ['nerez', 'keramika', 'hliník', 'cihlová', 'plast', 'nen
 export const FLUES = ['ocel', 'nerez', 'hliník', 'plast', 'zděný', 'plech', 'přímé napojení', 'jiný'];
 
 // Neodstraněné nedostatky (13) – dvířka rozdělena na netěsná / poškozená
-export const DEFECTS = [
+export const BASE_DEFECTS = [
   ['jadro', 'Drolící se jádro'],
   ['koupristup', 'Nepřístupný kouřovod'],
   ['oxidace', 'Oxidace materiálu'],
@@ -31,7 +31,7 @@ export const DEFECTS = [
 ];
 
 // Doporučení (12) – bez lomítek, každá varianta zvlášť
-export const RECOMMENDATIONS = [
+export const BASE_RECOMMENDATIONS = [
   ['vlozkovani', 'Vložkování'],
   ['prevlozkovani', 'Převložkování'],
   ['dehetstroj', 'Strojní odstranění dehtu'],
@@ -46,13 +46,31 @@ export const RECOMMENDATIONS = [
   ['nadstavit', 'Nadstavit komín (nedostatečná výška)'],
 ];
 
+// Pracovní seznamy – upravují se v Nastavení → Katalog závad (vlastní položky, pořadí, skrytí)
+export const DEFECTS = [...BASE_DEFECTS];
+export const RECOMMENDATIONS = [...BASE_RECOMMENDATIONS];
+const LABELS = new Map([...BASE_DEFECTS, ...BASE_RECOMMENDATIONS]);
+
+// k = { defects: [{ key, label, hidden }], recs: [...] } – když chybí, platí původní seznam
+export function applyCatalog(k = {}) {
+  const build = (target, base, custom) => {
+    const list = custom?.length ? custom : base.map(([key, lbl]) => ({ key, label: lbl }));
+    list.forEach((x) => LABELS.set(x.key, x.label));
+    target.length = 0;
+    target.push(...list.filter((x) => !x.hidden).map((x) => [x.key, x.label]));
+  };
+  build(DEFECTS, BASE_DEFECTS, k?.defects);
+  build(RECOMMENDATIONS, BASE_RECOMMENDATIONS, k?.recs);
+}
+export const catalogList = (which, k = {}) => (k?.[which]?.length ? k[which].map((x) => ({ ...x })) : (which === 'defects' ? BASE_DEFECTS : BASE_RECOMMENDATIONS).map(([key, lbl]) => ({ key, label: lbl, hidden: false })));
+
 export const CONCLUSIONS = [
   ['vyhovuje', 'VYHOVUJE'],
   ['poodstraneni', 'VYHOVUJE PO ODSTRANĚNÍ NEDOSTATKŮ'],
   ['nevyhovuje', 'NEVYHOVUJE'],
 ];
 
-export const label = (list, key) => (list.find(([k]) => k === key) || [])[1] || key;
+export const label = (list, key) => (list.find(([k]) => k === key) || [])[1] || LABELS.get(key) || key;
 
 // Souhrnný text kolen: „2× 90° + 1× 45°“
 export function elbowsText(e = {}) {

@@ -78,6 +78,12 @@ ${text ? `Zpráva:\n${text}` : ''}` });
   return ask(parts, { max: 600 });
 }
 
+// Označení fotky z kontroly (fotodokumentace)
+export const PHOTO_TAGS = ['štítek', 'kouřovod', 'závada', 'ústí komína', 'revizní dvířka', 'komínové těleso', 'spotřebič', 'půda', 'střecha', 'jiné'];
+export function tagPhoto(dataUrl) {
+  return ask([imagePart(dataUrl), { type: 'text', text: `Fotka z kominické kontroly. Vyber jeden štítek z ${JSON.stringify(PHOTO_TAGS)} a stručně (max 8 slov, česky) popiš, co je vidět – u závady jakou. Vrať POUZE JSON {"tag": "", "note": ""}` }], { max: 120 });
+}
+
 export async function testAi() {
   return ask([{ type: 'text', text: 'Odpověz POUZE JSON {"ok": true}' }], { max: 20 });
 }

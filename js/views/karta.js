@@ -46,6 +46,13 @@ export async function render(el, { args, go }) {
       ${docs.length ? docs.sort((a, b) => (b.date + b.createdAt).localeCompare(a.date + a.createdAt)).map((d) => html`<a class="kv" href="#navsteva-${d.id}" style="text-decoration:none;color:inherit"><span>${fmtDate(parseIso(d.date))}</span><b style="flex-grow:1">${d.status === 'final' ? `${{ doklad: 'Doklad', protokol: 'Protokol' }[d.kind] || 'Zpráva'} ${d.no}` : 'Rozpracovaná návštěva'}</b><span class="sub">${d.title || ''}</span>${d.status === 'final' ? '' : html`<span class="tag warn">dokončit</span>`}<span class="chev">›</span></a>`)
         : html`<p class="sub" style="margin:0">Zatím žádné dokumenty. Po první návštěvě se tu objeví zprávy a doklady.</p>`}
     </div>
+    ${(() => {
+      const withPh = docs.filter((d) => d.status === 'final' && d.photos?.length).sort((a, b) => b.date.localeCompare(a.date))[0];
+      return withPh ? html`<div class="card" style="margin-top:12px">
+        <div class="card-title"><h3>Fotky z poslední kontroly</h3><span class="sub">${fmtDate(parseIso(withPh.date))} · ${withPh.photos.length} ${withPh.photos.length === 1 ? 'fotka' : withPh.photos.length < 5 ? 'fotky' : 'fotek'}</span></div>
+        <div class="photo-grid">${[...withPh.photos].sort((a, b) => (a.tag || 'ž').localeCompare(b.tag || 'ž', 'cs')).map((ph) => html`<figure><img src="${ph.data}" alt="${ph.tag || 'fotka'}" data-phview style="cursor:zoom-in"><figcaption><b>${ph.tag || 'bez štítku'}</b>${ph.note ? html`<span class="sub" style="width:100%">${ph.note}</span>` : ''}</figcaption></figure>`)}</div>
+      </div>` : '';
+    })()}
 
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px">
       <button class="btn soft" data-act="archive">${c.archived ? 'Vrátit z archivu' : 'Archivovat'}</button>
@@ -55,6 +62,7 @@ export async function render(el, { args, go }) {
 
   const note = el.querySelector('#note');
   note.addEventListener('change', async () => { c.note = note.value.trim(); await saveCustomer(c); toast('Poznámka uložena'); });
+  el.querySelectorAll('[data-phview]').forEach((img) => img.addEventListener('click', () => modal({ title: img.alt, body: `<img src="${img.src}" alt="" style="width:100%;max-height:70vh;object-fit:contain;border-radius:8px">` })));
   el.querySelector('[data-act="visit"]').addEventListener('click', async () => {
     let objectId = c.objects[0]?.id;
     if (c.objects.length > 1) {

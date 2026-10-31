@@ -15,6 +15,7 @@ import { fill, dayPhrase, blockPhrase } from '../texts.js';
 import { html, icon, toast, modal, isoDate, parseIso, fmtDayLong, fmtDateShort, fmtPhone, monthName, monthShort } from '../ui.js';
 
 const state = { tab: 'poptavky', kind: 'vse', selected: new Set() };
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 export async function render(el, { args, go }) {
   if (args[0]) state.tab = args[0];
@@ -26,7 +27,7 @@ export async function render(el, { args, go }) {
       <h1>Poptávky</h1>
       <div class="seg">${tabs.map(([k, l, n]) => html`<button class="${state.tab === k ? 'on' : ''}" data-tab="${k}">${l} <span class="count">${n}</span></button>`)}</div>
       <span class="grow"></span>
-      ${hasAi() ? html`<button class="btn soft" data-act="ai">Ze zprávy</button>` : ''}
+      ${hasAi() ? html`<button class="btn soft" data-act="ai">${icon('mic')} Ze zprávy / hlasem</button>` : ''}
       <button class="btn primary" data-act="new">${icon('plus')} Nová poptávka</button>
     </div>
     <div id="tab"></div>`);
@@ -145,7 +146,7 @@ async function tabOpen(box, open, customers, rerender) {
       <div class="card-title"><h3>Z e-mailu (${mails.length})</h3><span class="sub">zprávy z KominictviJK@gmail.com, které vypadají jako poptávka</span></div>
       ${mails.slice(0, 8).map((m) => html`<div class="kv"><span>${fmtDateShort(parseIso(m.date))}</span><span style="flex-grow:1"><b>${m.parsed?.isMayorConfirmation ? 'Potvrzení termínu od obce' : m.title || '(bez předmětu)'}</b><br><small class="sub">${(m.from || '').replace(/<.*>/, '').trim()}${m.parsed?.note ? ` · ${m.parsed.note}` : ''}</small></span><button class="btn small primary" data-mail="${m.id}">Zpracovat</button><button class="btn small" data-mailno="${m.id}">Není poptávka</button></div>`)}
     </div>` : ''}
-    <div class="grid c2" style="align-items:start;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
+    <div class="grid c2 split" style="align-items:start;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
       <div>
         <div class="chips" style="margin-bottom:10px">${[['vse', 'Vše'], ['kontrola', 'Kontrola a čištění'], ['ostatni', 'Ostatní práce']].map(([k, l]) => html`<button class="chip ${state.kind === k ? 'on' : ''}" data-kind="${k}">${l}</button>`)}</div>
         ${items.length ? html`<div class="list">${items.map((q) => {
@@ -202,12 +203,30 @@ async function tabOpen(box, open, customers, rerender) {
 // Poptávka ze zprávy: vložený text nebo screenshot (SMS, WhatsApp, Messenger…) → AI vyplní
 async function fromMessage(done, go) {
   const r = await modal({
-    title: 'Poptávka ze zprávy',
-    body: String(html`<p class="sub" style="margin-top:0">Vlož text zprávy, nebo přidej screenshot. Aplikace najde jméno, adresu, telefon a co zákazník chce. Potvrzení termínu od obce rovnou založí výjezd.</p>
+    title: 'Poptávka ze zprávy nebo hlasem',
+    body: String(html`<p class="sub" style="margin-top:0">Vlož text zprávy, přidej screenshot, nebo poptávku nadiktuj („Novák, Hnojice 45, kotel na uhlí, chce odpoledne příští týden, 777 123 456“). Aplikace najde jméno, adresu, telefon a co zákazník chce. Potvrzení termínu od obce rovnou založí výjezd.</p>
       <label class="field"><span>Text zprávy</span><textarea id="fm-t" rows="5" placeholder="Dobrý den, potřeboval bych vyčistit komín…"></textarea></label>
-      <label class="btn soft" style="margin-top:10px">Přidat screenshot<input type="file" accept="image/*" id="fm-i" hidden></label> <span class="sub" id="fm-n"></span>`),
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        ${SpeechRec ? html`<button type="button" class="btn soft" id="fm-mic">${icon('mic')} Diktovat</button>` : ''}
+        <label class="btn soft">Přidat screenshot<input type="file" accept="image/*" id="fm-i" hidden></label> <span class="sub" id="fm-n">${SpeechRec ? '' : 'Diktovat jde i mikrofonem na klávesnici.'}</span>
+      </div>`),
     actions: [{ label: 'Zrušit', value: null }, { label: 'Přečíst', kind: 'primary', value: async (root) => ({ text: root.querySelector('#fm-t').value.trim(), file: root.querySelector('#fm-i').files?.[0] || null }) }],
-    onOpen: (root) => root.querySelector('#fm-i').addEventListener('change', (e) => { root.querySelector('#fm-n').textContent = e.target.files?.[0] ? '✓ screenshot přidán' : ''; }),
+    onOpen: (root) => {
+      root.querySelector('#fm-i').addEventListener('change', (e) => { root.querySelector('#fm-n').textContent = e.target.files?.[0] ? '✓ screenshot přidán' : ''; });
+      const mic = root.querySelector('#fm-mic');
+      if (!mic) return;
+      let rec = null;
+      mic.addEventListener('click', () => {
+        if (rec) { rec.stop(); return; }
+        const ta = root.querySelector('#fm-t');
+        const base = ta.value ? `${ta.value.trim()} ` : '';
+        rec = new SpeechRec(); rec.lang = 'cs-CZ'; rec.continuous = true; rec.interimResults = true;
+        rec.onresult = (e) => { ta.value = base + [...e.results].map((r) => r[0].transcript).join(' '); };
+        rec.onend = () => { rec = null; mic.classList.remove('primary'); mic.lastChild.textContent = ' Diktovat'; };
+        rec.onerror = (e) => { root.querySelector('#fm-n').textContent = e.error === 'not-allowed' ? 'Povol mikrofon v nastavení Safari.' : 'Diktování nešlo – zkus mikrofon na klávesnici.'; };
+        rec.start(); mic.classList.add('primary'); mic.lastChild.textContent = ' Hotovo';
+      });
+    },
   });
   if (!r || (!r.text && !r.file)) return;
   toast('Čtu zprávu…');

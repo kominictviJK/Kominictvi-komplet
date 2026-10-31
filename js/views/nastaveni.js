@@ -10,15 +10,17 @@ import { hasAi, testAi, aiSpent } from '../ai.js';
 import { syncCalendar, scanGmail, fetchBank, parseStatement, applyTransactions } from '../sync.js';
 import { backupToDrive, backupToFile, lastBackup, decrypt, restore, backupPass } from '../backup.js';
 import { lockSupported, lockEnabled, setupLock, disableLock } from '../lock.js';
-import { resetTrialData } from '../seed.js';
+import { resetTrialData, goLive, ownTrialCustomers } from '../seed.js';
 import { html, raw, toast, modal, fmtDate } from '../ui.js';
 import { APP_VERSION } from '../version.js';
+import { catalogList } from '../catalog.js';
+import { uid } from '../db.js';
 
 const SECTIONS = [
   { id: 'firma', label: 'Firma a já', sub: (s) => 'údaje, logo, razítko, podpis, účet', warn: (s) => !s.firma.ucet || !s.firma.razitko },
   { id: 'cenik', label: 'Ceník', sub: (s) => `${s.cenik.kontrola.join(' / ')} · frézování ${s.cenik.frezovaniZaMetr}/m · ${s.cenik.dopravaZaKm} Kč/km` },
   { id: 'cislovani', label: 'Dokumenty a číslování', sub: () => 'šablony · číselné řady' },
-  { id: 'katalog', label: 'Katalog závad', sub: () => '13 nedostatků · 12 doporučení', stage: 8 },
+  { id: 'katalog', label: 'Katalog závad', sub: (s) => `${catalogList('defects', s.katalog).filter((x) => !x.hidden).length} nedostatků · ${catalogList('recs', s.katalog).filter((x) => !x.hidden).length} doporučení` },
   { id: 'texty', label: 'Texty pro zákazníky', sub: () => 'SMS a e-maily · 10 šablon' },
   { id: 'lhuty', label: 'Lhůty a plánování', sub: (s) => `${s.lhuty.tuhaMesice} / ${s.lhuty.kondenzacniMesice} měsíců · oslovit ${s.lhuty.oslovitMesicePredem} měs. předem` },
   { id: 'finance', label: 'Finance', sub: (s) => `paušál ${s.finance.pausalPasmo}. pásmo · upomínky ${s.finance.upominkaDny.join(' a +')} dní` },
@@ -89,6 +91,7 @@ export async function render(el, { args, go }) {
   if (FIELDS[current.id]) renderForm(box, current, s);
   else if (current.id === 'cislovani') await renderNumbering(box, s);
   else if (current.id === 'texty') renderTexts(box, s);
+  else if (current.id === 'katalog') renderCatalog(box, s);
   else if (current.id === 'propojeni') await renderConnections(box, s);
   else if (current.id === 'data') await renderData(box, s, () => render(el, { args, go }));
   else box.innerHTML = String(html`<div class="page-head"><h2>${current.label}</h2></div><div class="card soon" style="min-height:240px"><span class="stage">Etapa ${current.stage}</span><p>Tahle sekce se doplní v etapě ${current.stage}.</p></div>`);
@@ -176,6 +179,8 @@ async function renderNumbering(box, s) {
 async function renderData(box, s, rerender) {
   const trash = (await all('trash')).sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
   const last = await lastBackup();
+  const est = await navigator.storage?.estimate?.().catch(() => null);
+  const persisted = await navigator.storage?.persisted?.().catch(() => false);
   box.innerHTML = String(html`
     <div class="page-head"><h2>Data a bezpečnost</h2></div>
     <div class="card">
@@ -185,7 +190,7 @@ async function renderData(box, s, rerender) {
         : `Ostrý provoz od ${s.rezim.ostryOd ? fmtDate(new Date(s.rezim.ostryOd)) : '—'}.`}</p>
       ${s.rezim.zkusebni ? html`<div style="display:flex;gap:10px;flex-wrap:wrap">
         <button class="btn soft" data-act="reset">Obnovit zkušební data</button>
-        <button class="btn" disabled title="Zpřístupní se po dokončení stavby">Přepnout na ostrý provoz</button>
+        <button class="btn primary" data-act="golive">Přepnout na ostrý provoz…</button>
       </div>` : ''}
     </div>
     <div class="card">
@@ -216,14 +221,43 @@ async function renderData(box, s, rerender) {
       </div>` : html`<p class="sub" style="margin:0">Zámek jde zapnout v aplikaci na iPadu (otevřené z plochy).</p>`}
       <p class="sub" id="lock-status" style="margin-bottom:0"></p>
     </div>
+    <div class="card">
+      <div class="card-title"><h3>Úložiště v iPadu</h3>${persisted ? html`<span class="tag ok">trvalé</span>` : html`<span class="tag">běžné</span>`}</div>
+      <p class="sub" style="margin:0">${est ? `Aplikace zabírá ${fmtSize(est.usage)}${est.quota ? ` z dostupných ${fmtSize(est.quota)}` : ''}.` : 'Velikost se nepodařilo zjistit.'} ${persisted ? 'iPad data aplikace sám nesmaže.' : 'Přidej aplikaci na plochu, aby iPad data nemazal.'}</p>
+    </div>
     <p class="sub">Verze aplikace ${APP_VERSION}</p>
   `);
   box.querySelector('[data-act="reset"]')?.addEventListener('click', async () => {
-    const ok = await modal({ title: 'Obnovit zkušební data?', body: '<p>Smažou se všechny zkušební záznamy a nahrají se znovu ukázkoví zákazníci.</p>', actions: [{ label: 'Zrušit', value: false }, { label: 'Obnovit', value: true, kind: 'primary' }] });
+    const ok = await modal({ title: 'Obnovit zkušební data?', body: '<p>Smažou se zkušební návštěvy, dokumenty, faktury a nabídky a znovu se nahrají ukázkoví zákazníci. Zákazníci, které jsi zadal sám, zůstanou.</p>', actions: [{ label: 'Zrušit', value: false }, { label: 'Obnovit', value: true, kind: 'primary' }] });
     if (!ok) return;
     await resetTrialData();
     toast('Zkušební data obnovena');
     rerender();
+  });
+  box.querySelector('[data-act="golive"]')?.addEventListener('click', async () => {
+    const st = settings(); const p = st.propojeni || {};
+    const own = await ownTrialCustomers();
+    const checks = [
+      ['Číslo účtu', !!st.firma.ucet], ['Razítko', !!st.firma.razitko], ['Podpis', !!st.firma.podpis],
+      ['Mapy.cz', !!p.mapyKey], ['Pomocník Google', !!p.googleUrl], ['AI', !!p.aiKey], ['Heslo záloh', !!st.bezpecnost.zalohaHeslo],
+    ];
+    const early = new Date() < new Date('2027-01-01T00:00:00');
+    const ok = await modal({
+      title: 'Přepnout na ostrý provoz',
+      body: String(html`<p>Smažou se <b>všechny zkoušky</b>: ukázkoví zákazníci, zkušební návštěvy, zprávy, faktury, nabídky, náklady, plány a koš. Číslování začne od 1 – první zpráva v lednu bude <b>1/1/2027</b>.</p>
+        ${own.length ? html`<label class="chip" style="margin:6px 0"><input type="checkbox" id="gl-keep" checked> Ponechat zákazníky, které jsem zadal sám (${own.length})</label><p class="sub" style="margin-top:4px">Pokud jsi na nich zkoušel zprávy, zkontroluj u nich v kartě datum poslední kontroly.</p>` : ''}
+        <div class="kv-list">${checks.map(([l, done]) => html`<div class="kv"><span>${l}</span><span class="tag ${done ? 'ok' : 'warn'}">${done ? 'hotovo' : 'chybí – doplníš i později'}</span></div>`)}</div>
+        ${early ? html`<p class="note-box" style="margin-top:10px">Je teprve ${fmtDate(new Date())}. Doporučuju přepnout až těsně před 1. 1. 2027 – dokumenty vystavené v prosinci by měly prosincová čísla.</p>` : ''}
+        <label class="field" style="margin-top:10px"><span>Pro potvrzení napiš OSTRÝ</span><input class="input" id="gl-confirm" autocomplete="off" autocapitalize="characters"></label>`),
+      actions: [{ label: 'Zrušit', value: null }, { label: 'Přepnout', kind: 'danger', value: (root) => ({ word: root.querySelector('#gl-confirm').value.trim().toUpperCase(), keep: root.querySelector('#gl-keep')?.checked ?? true }) }],
+    });
+    if (!ok) return;
+    if (!['OSTRÝ', 'OSTRY'].includes(ok.word)) { toast('Nepřepnuto – potvrzovací slovo nesedí'); return; }
+    await goLive({ keepOwn: ok.keep });
+    await saveSettings({ rezim: { zkusebni: false, ostryOd: new Date().toISOString() } });
+    toast('Ostrý provoz zapnut. Hodně štěstí!');
+    location.hash = '#dnes';
+    location.reload();
   });
   box.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
     await restoreFromTrash(b.dataset.restore);
@@ -269,8 +303,53 @@ async function renderData(box, s, rerender) {
   box.querySelector('#lock-min')?.addEventListener('change', async (e) => { await saveSettings({ bezpecnost: { zamekMinuty: Number(e.target.value) } }); toast('Uloženo'); });
 }
 
+const fmtSize = (b) => (b >= 1e9 ? `${(b / 1e9).toFixed(1).replace('.', ',')} GB` : `${Math.max(1, Math.round(b / 1e6))} MB`);
+
 async function askPass() {
   return modal({ title: 'Heslo zálohy', body: `<label class="field"><span>Heslo, kterým byla záloha zašifrovaná</span><input class="input" type="password" id="ap" value="${backupPass().replace(/"/g, '&quot;')}"></label>`, actions: [{ label: 'Zrušit', value: null }, { label: 'Pokračovat', kind: 'primary', value: (root) => root.querySelector('#ap').value }] });
+}
+
+function renderCatalog(box, s) {
+  const lists = { defects: catalogList('defects', s.katalog), recs: catalogList('recs', s.katalog) };
+  const custom = !!(s.katalog?.defects?.length || s.katalog?.recs?.length);
+  const section = (which, title, ph) => html`
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><h3>${title}</h3><span class="sub">${lists[which].filter((x) => !x.hidden).length} zobrazeno</span></div>
+      ${lists[which].map((x, i) => html`<div class="kv cat-row ${x.hidden ? 'hidden-item' : ''}">
+        <input class="input" data-cl="${which}.${i}" value="${x.label}" style="flex-grow:1">
+        <button class="btn small" data-up="${which}.${i}" ${i === 0 ? 'disabled' : ''} aria-label="Posunout výš">▲</button>
+        <button class="btn small" data-down="${which}.${i}" ${i === lists[which].length - 1 ? 'disabled' : ''} aria-label="Posunout níž">▼</button>
+        <button class="btn small ${x.hidden ? 'soft' : ''}" data-hide="${which}.${i}">${x.hidden ? 'Zobrazit' : 'Skrýt'}</button>
+        ${x.key.startsWith('c_') ? html`<button class="btn small danger" data-rm="${which}.${i}" aria-label="Smazat">✕</button>` : ''}
+      </div>`)}
+      <div style="display:flex;gap:8px;margin-top:10px"><input class="input" id="new-${which}" placeholder="${ph}" style="flex-grow:1"><button class="btn soft" data-add="${which}">+ Přidat</button></div>
+    </div>`;
+  box.innerHTML = String(html`
+    <div class="page-head"><h2>Katalog závad</h2>${custom ? html`<span class="grow"></span><button class="btn small" data-act="cat-reset">Vrátit původní</button>` : ''}</div>
+    <div class="note-box">Položky, které ťukáš ve formuláři zprávy. Můžeš je přejmenovat, přeřadit, skrýt nebo přidat vlastní. Změna platí pro nové zprávy, vydané zprávy zůstávají beze změny.</div>
+    ${section('defects', 'Neodstraněné nedostatky', 'nový nedostatek, např. Chybí komínová lávka')}
+    ${section('recs', 'Doporučení', 'nové doporučení, např. Osadit komínovou stříšku')}`);
+  const save = async () => {
+    await saveSettings({ katalog: null });
+    await saveSettings({ katalog: { defects: lists.defects, recs: lists.recs } });
+    renderCatalog(box, settings());
+  };
+  const at = (v) => { const [w, i] = v.split('.'); return [lists[w], Number(i)]; };
+  box.querySelectorAll('[data-cl]').forEach((inp) => inp.addEventListener('change', async () => { const [l, i] = at(inp.dataset.cl); const v = inp.value.trim(); if (!v) return; l[i].label = v; await save(); toast('Uloženo'); }));
+  box.querySelectorAll('[data-up]').forEach((b) => b.addEventListener('click', () => { const [l, i] = at(b.dataset.up); [l[i - 1], l[i]] = [l[i], l[i - 1]]; save(); }));
+  box.querySelectorAll('[data-down]').forEach((b) => b.addEventListener('click', () => { const [l, i] = at(b.dataset.down); [l[i + 1], l[i]] = [l[i], l[i + 1]]; save(); }));
+  box.querySelectorAll('[data-hide]').forEach((b) => b.addEventListener('click', () => { const [l, i] = at(b.dataset.hide); l[i].hidden = !l[i].hidden; save(); }));
+  box.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => { const [l, i] = at(b.dataset.rm); l.splice(i, 1); save(); }));
+  box.querySelectorAll('[data-add]').forEach((b) => b.addEventListener('click', () => {
+    const w = b.dataset.add; const v = box.querySelector(`#new-${w}`).value.trim();
+    if (!v) { toast('Napiš název položky'); return; }
+    lists[w].push({ key: uid('c_'), label: v, hidden: false }); save(); toast('Přidáno');
+  }));
+  box.querySelector('[data-act="cat-reset"]')?.addEventListener('click', async () => {
+    const ok = await modal({ title: 'Vrátit původní katalog?', body: '<p>Vlastní položky a úpravy se smažou. Vydané zprávy zůstanou beze změny.</p>', actions: [{ label: 'Zrušit', value: false }, { label: 'Vrátit', value: true, kind: 'danger' }] });
+    if (!ok) return;
+    await saveSettings({ katalog: null }); renderCatalog(box, settings()); toast('Původní katalog vrácen');
+  });
 }
 
 function renderTexts(box, s) {

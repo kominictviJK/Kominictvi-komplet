@@ -84,7 +84,7 @@ async function start() {
   await openDb();
   await loadSettings();
   initLock();
-  const seeded = await seedIfEmpty();
+  const seeded = settings().rezim.zkusebni ? await seedIfEmpty() : false;
   purgeTrash().catch(() => {});
   requestPersistence().catch(() => {});
   window.addEventListener('hashchange', renderView);

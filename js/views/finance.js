@@ -63,7 +63,7 @@ async function tabOverview(box, go) {
       <div class="card kpi"><span class="label">Náklady · ${monthName(mi)}</span><span class="big">${fmtMoney(cur.cost)}</span><span class="sub">tankování ${fmtMoney(cur.fuel)} · materiál ${fmtMoney(cur.material)}</span></div>
       <div class="card kpi dark"><span class="label">Zisk · ${monthName(mi)}</span><span class="big">${fmtMoney(cur.income - cur.cost)}</span><span class="sub">letos celkem ${fmtMoney(yearProfit)}</span></div>
     </div>
-    <div class="grid" style="grid-template-columns:minmax(0,1fr) 320px;margin-top:12px">
+    <div class="grid split" style="grid-template-columns:minmax(0,1fr) 320px;margin-top:12px">
       <div class="card">
         <div class="card-title"><h3>Rok ${y} po měsících</h3><span class="legend" style="margin:0"><span><i class="bar" style="background:#A97A1F"></i>tržby</span><span><i class="bar" style="background:#2F6FC0"></i>náklady</span></span></div>
         <div class="chart">${months.map((m, i) => html`<div class="cm ${i === mi ? 'cur' : ''}" title="${monthName(i)}: tržby ${fmtMoney(m.income)}, náklady ${fmtMoney(m.cost)}"><span class="cb in" style="height:${Math.round(m.income / max * 100)}%"></span><span class="cb out" style="height:${Math.round(m.cost / max * 100)}%"></span><small>${monthShort(i)}</small></div>`)}</div>
@@ -243,7 +243,7 @@ async function tabExpenses(box, rerender) {
       <button class="chip ${state.cat === 'vse' ? 'on' : ''}" data-cat="vse">Vše</button>
       ${CATEGORIES.map(([k, l]) => html`<button class="chip ${state.cat === k ? 'on' : ''}" data-cat="${k}">${l} <small>${fmtMoney(sum((e) => e.category === k))}</small></button>`)}
     </div>
-    <div class="grid" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start">
+    <div class="grid split" style="grid-template-columns:minmax(0,1fr) 320px;align-items:start">
       <div class="list">${shown.length ? shown.map((e) => html`<button class="row" data-exp="${e.id}" style="width:100%;border:none;background:none;text-align:left">
         <span style="width:54px;font-weight:600;color:var(--ink-2)">${parseIso(e.date).getDate()}. ${parseIso(e.date).getMonth() + 1}.</span>
         <span class="main"><span class="title" style="font-size:16px">${e.note || catLabel(e.category)}</span><span class="meta">${catLabel(e.category)}${e.jobRef ? ` → ${e.jobRef.label}` : ''} ${e.photo ? html`<span class="tag">účtenka</span>` : html`<span class="tag">bez účtenky</span>`}${e.category === 'material' && e.jobRef ? (e.returned ? html` <span class="tag ok">vráceno ✓</span>` : html` <span class="tag warn">čeká na úhradu zakázky</span>`) : ''}${e.recurringKey ? html` <span class="tag">pravidelná</span>` : ''}</span></span>

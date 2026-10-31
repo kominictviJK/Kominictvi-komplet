@@ -15,7 +15,7 @@ import { signaturePad } from '../signature.js';
 import { shareDocument } from '../share.js';
 import { html, raw, icon, toast, modal, fmtMoney, fmtDate, parseIso } from '../ui.js';
 import { uid } from '../db.js';
-import { hasAi, readLabel } from '../ai.js';
+import { hasAi, readLabel, tagPhoto, PHOTO_TAGS } from '../ai.js';
 import { hasHelper } from '../google.js';
 import { photoData } from './finance.js';
 import { PURPOSES, P_FLUES, P_LINERS, CLEANING, ROOFS, CONTRACTORS } from '../protocol.js';
@@ -160,6 +160,14 @@ function stepForm(box, ctx) {
       <button class="btn primary" data-act="next">Pokračovat na platbu ›</button>
     </div>
     <div class="card" style="margin-top:12px">
+      <div class="card-title"><h3>Fotodokumentace</h3><label class="btn small soft">+ Vyfotit<input type="file" accept="image/*" capture="environment" id="v-photo" hidden></label></div>
+      ${(d.photos || []).length ? html`<div class="photo-grid">${d.photos.map((ph, i) => html`<figure data-pid="${ph.id}"><img src="${ph.data}" alt="${ph.tag || 'fotka'}"><figcaption>
+        <select data-ptag="${i}" aria-label="Štítek fotky">${['', ...PHOTO_TAGS].map((t) => html`<option value="${t}" ${ph.tag === t ? 'selected' : ''}>${t || (ph.pending ? 'označuji…' : '— štítek —')}</option>`)}</select>
+        <button class="btn small" data-pdel="${i}" aria-label="Smazat fotku">✕</button>
+        ${ph.note ? html`<span class="sub" style="width:100%">${ph.note}</span>` : ''}</figcaption></figure>`)}</div>`
+        : html`<p class="sub" style="margin:0">Štítek, kouřovod, ústí, závady… ${hasAi() ? 'Fotky se samy označí.' : 'Štítek fotce vybereš.'} Nefotí se do zprávy, jen do karty zákazníka.</p>`}
+    </div>
+    <div class="card" style="margin-top:12px">
       <label class="field"><span>Interní poznámka (netiskne se)</span><textarea id="i-note" data-bind="note" placeholder="Jen pro tebe, např. co nabídnout příště">${d.note}</textarea></label>
     </div>
   `);
@@ -203,6 +211,22 @@ function stepForm(box, ctx) {
       toast('Štítek přečten – zkontroluj údaje');
     } catch (e) { toast(e.message); lbl.firstChild.textContent = 'Vyfotit štítek'; }
   }));
+  box.querySelector('#v-photo').addEventListener('change', async (ev) => {
+    const f = ev.target.files?.[0]; if (!f) return;
+    d.photos = d.photos || [];
+    const ph = { id: uid('p_'), data: await photoData(f), tag: '', note: '', at: new Date().toISOString(), pending: hasAi() };
+    d.photos.push(ph); await saveDraft(d); redraw();
+    if (!hasAi()) return;
+    try { const r = await tagPhoto(ph.data); ph.tag = PHOTO_TAGS.includes(r.tag) ? r.tag : 'jiné'; ph.note = r.note || ''; } catch { /* štítek vybere ručně */ }
+    ph.pending = false; await saveDraft(d);
+    const fig = box.querySelector(`[data-pid="${ph.id}"]`);
+    if (fig) {
+      const sel = fig.querySelector('select'); sel.options[0].textContent = '— štítek —'; sel.value = ph.tag;
+      if (ph.note) { const sp = document.createElement('span'); sp.className = 'sub'; sp.style.width = '100%'; sp.textContent = ph.note; fig.querySelector('figcaption').appendChild(sp); }
+    }
+  });
+  box.querySelectorAll('[data-ptag]').forEach((sel) => sel.addEventListener('change', async () => { d.photos[Number(sel.dataset.ptag)].tag = sel.value; await saveDraft(d); }));
+  box.querySelectorAll('[data-pdel]').forEach((b) => b.addEventListener('click', async () => { d.photos.splice(Number(b.dataset.pdel), 1); await saveDraft(d); redraw(); }));
   box.querySelector('[data-act="next"]').addEventListener('click', () => goStep(ctx, 'platba'));
 }
 

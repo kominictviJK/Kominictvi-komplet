@@ -45,6 +45,19 @@ export async function route(from, to) {
   return { minutes: Math.round((data.duration || 0) / 60), km: Math.round((data.length || 0) / 100) / 10 };
 }
 
+// Délka celé trasy dne: domov → zákazníci → domov (uloží se pro daný den a pořadí)
+export async function dayRoute(points) {
+  if (!hasKey() || points.length < 2) return null;
+  try {
+    const data = await call('routing/route', { start: `${points[0].lng},${points[0].lat}`, end: `${points.at(-1).lng},${points.at(-1).lat}`, waypoints: points.slice(1, -1).map((p) => `${p.lng},${p.lat}`).join(';'), routeType: 'car_fast', format: 'geojson' });
+    return { minutes: Math.round((data.duration || 0) / 60), km: Math.round((data.length || 0) / 1000) };
+  } catch {
+    let km = 0, minutes = 0;
+    for (let i = 1; i < points.length; i++) { const r = await route(points[i - 1], points[i]); km += r.km; minutes += r.minutes; }
+    return { minutes, km: Math.round(km) };
+  }
+}
+
 // Poloha domova (start a konec trasy) – zjistí se jednou z adresy v Nastavení
 export async function homePosition() {
   const s = settings();

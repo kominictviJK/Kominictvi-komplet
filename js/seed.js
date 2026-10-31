@@ -7,7 +7,7 @@ const addr = (street, city, zip, district, lat, lng) => ({ street, city, zip, di
 function customer(o) {
   return {
     id: uid('c_'), type: 'osoba', phones: [], email: '', delivery: 'whatsapp', tags: [], source: '',
-    note: '', isNew: false, archived: false, ico: '', createdAt: new Date().toISOString(), trial: true, ...o,
+    note: '', isNew: false, archived: false, ico: '', createdAt: new Date().toISOString(), trial: true, demo: true, ...o,
     name: o.name || `${o.firstName} ${o.lastName}`,
   };
 }
@@ -84,7 +84,7 @@ export function buildSeed(today = new Date()) {
 
 export async function seedIfEmpty() {
   const existing = await all('customers');
-  if (existing.length) return false;
+  if (existing.length) { await markDemo(existing); return false; }
   const { customers, appointments, inquiries, events } = buildSeed();
   await putMany('customers', customers);
   await putMany('appointments', appointments);
@@ -104,10 +104,40 @@ export async function removeTrialData() {
 }
 
 export async function resetTrialData() {
-  await removeTrialData();
+  // vlastní zákazníky (zadané ručně) ponechá, smaže jen ukázkové a všechny zkoušky
+  for (const store of DATA_STORES) {
+    for (const item of await all(store)) if (item.trial && (store !== 'customers' || item.demo !== false)) await del(store, item.id);
+  }
+  for (const c of await all('counters')) if (c.key.startsWith('trial:')) await del('counters', c.key);
   const { customers, appointments, inquiries, events } = buildSeed();
   await putMany('customers', customers);
   await putMany('appointments', appointments);
   await putMany('inquiries', inquiries);
   await putMany('events', events);
+}
+
+// Starší instalace: ukázkoví zákazníci vznikli najednou při prvním spuštění → označit je jako ukázkové
+async function markDemo(customers) {
+  const trial = customers.filter((c) => c.trial && c.demo === undefined);
+  if (!trial.length) return;
+  const t0 = Math.min(...trial.map((c) => new Date(c.createdAt).getTime()));
+  await putMany('customers', trial.map((c) => ({ ...c, demo: new Date(c.createdAt).getTime() - t0 < 60000 })));
+}
+
+// Zákazníci, které zadal sám ve zkušebním režimu (ne ukázkoví)
+export async function ownTrialCustomers() { return (await all('customers')).filter((c) => c.trial && !c.demo); }
+
+// Přepnutí na ostrý provoz: smaže zkoušky (návštěvy, dokumenty, faktury, nabídky, náklady, plány) a ukázkové zákazníky;
+// vlastní zákazníky může ponechat. Číselné řady začnou od 1.
+export async function goLive({ keepOwn = true } = {}) {
+  for (const store of DATA_STORES.filter((x) => x !== 'customers')) {
+    for (const item of await all(store)) if (item.trial) await del(store, item.id);
+  }
+  for (const c of await all('customers')) {
+    if (!c.trial) continue;
+    if (keepOwn && !c.demo) await putMany('customers', [{ ...c, trial: false }]);
+    else await del('customers', c.id);
+  }
+  for (const c of await all('counters')) if (c.key.startsWith('trial:')) await del('counters', c.key);
+  for (const t of await all('trash')) await del('trash', t.id);
 }
