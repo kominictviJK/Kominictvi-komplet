@@ -10,7 +10,6 @@ import { smsQueue } from '../smsqueue.js';
 import { fill, dayPhrase, blockPhrase } from '../texts.js';
 import { paymentTotal } from '../payment.js';
 import { hasKey, homePosition, currentPosition, route, dayRoute } from '../mapy.js';
-import { forecast, warnings } from '../weather.js';
 import { html, icon, isoDate, parseIso, fmtDayLong, fmtPhone, fmtMoney, toast, modal } from '../ui.js';
 
 export async function load(date = new Date()) {
@@ -90,10 +89,7 @@ export async function render(el, { go } = {}) {
           <span style="color:#D8CFC2;font-size:14px">${active.length ? `první ${active[0].time ? `v ${active[0].time}` : active[0].block} · ${active[0].object?.address.city}` : 'Na dnešek nic domluveno.'}</span>
           <span style="color:#D8CFC2;font-size:14px" id="day-km"></span>
         </div>`}
-      <div class="card weather" id="weather">
-        <span class="label">${dayOver ? 'Zítra' : 'Počasí'}</span>
-        <span class="sub">Načítám…</span>
-      </div>
+
       <div class="card">
         <span class="label">Hotovo</span>
         <span class="big">${done.length} / ${active.length}</span>
@@ -134,7 +130,7 @@ export async function render(el, { go } = {}) {
   `);
 
   const rerender = () => render(el, { go });
-  fillExtras(el, { visits: active, dayOver, home: (await homePosition()) || s.lhuty.domovGps }).catch(() => {});
+  fillExtras(el, { visits: active, home: (await homePosition()) || s.lhuty.domovGps }).catch(() => {});
   el.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => go(`navsteva/zacit/${b.dataset.start}`)));
   el.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => go(`navsteva/${b.dataset.doc}`)));
   el.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', async () => {
@@ -246,22 +242,8 @@ async function moreActions(v, rerender) {
   }
 }
 
-// Počasí (Open-Meteo) a délka trasy dne (Mapy.cz) – doplní se po vykreslení
-async function fillExtras(el, { visits, dayOver, home }) {
-  const pos = home || visits.find((v) => v.object?.address.lat)?.object.address;
-  const box = el.querySelector('#weather');
-  const days = await forecast(pos ? { lat: pos.lat, lng: pos.lng } : { lat: 49.7306, lng: 17.2989 });
-  if (box && box.isConnected) {
-    const d = days?.[dayOver ? 1 : 0];
-    if (!d) box.querySelector('.sub').textContent = navigator.onLine ? 'Počasí se nepodařilo načíst.' : 'Bez internetu.';
-    else {
-      const w = warnings(d);
-      box.innerHTML = String(html`<span class="label">${dayOver ? 'Zítra' : 'Počasí'}</span>
-        <span class="big">${d.tmax}° <small style="font-size:16px;color:var(--muted)">/ ${d.tmin}°</small></span>
-        <span style="font-size:14px">${d.text}${d.rainProb != null ? ` · srážky ${d.rainProb} %` : ''} · vítr ${d.wind} km/h</span>
-        ${w.length ? html`<span class="tag warn" style="align-self:flex-start;white-space:normal">${w.join(' · ')}</span>` : ''}`);
-    }
-  }
+// Délka trasy dne (Mapy.cz) – doplní se po vykreslení
+async function fillExtras(el, { visits, home }) {
   const kmEl = el.querySelector('#day-km');
   const pts = visits.filter((v) => v.status !== 'missed' && v.object?.address.lat).map((v) => ({ lat: v.object.address.lat, lng: v.object.address.lng }));
   if (kmEl && home && pts.length && hasKey()) {

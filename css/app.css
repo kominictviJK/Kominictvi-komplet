@@ -397,7 +397,6 @@ label.chip input { accent-color: var(--bronze); }
 .cat-row { gap: 8px; align-items: center; }
 .cat-row .input { min-height: 44px; border: 1px solid var(--line, #E4DDD2); background: #fff; border-radius: 8px; padding: 6px 10px; }
 .hidden-item .input { opacity: .45; text-decoration: line-through; }
-.weather .tag { margin-top: 2px; }
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
 .photo-grid figure { margin: 0; background: #fff; border-radius: 10px; overflow: hidden; border: 1px solid var(--line, #E4DDD2); }
 .photo-grid img { width: 100%; height: 120px; object-fit: cover; display: block; }
