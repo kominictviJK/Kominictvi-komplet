@@ -189,6 +189,7 @@ async function renderData(box, s, rerender) {
         ? 'Aplikace běží s vymyšlenými zákazníky. Můžeš zkoušet cokoli – nic se nikam neposílá naostro a čísla dokladů jsou zkušební.'
         : `Ostrý provoz od ${s.rezim.ostryOd ? fmtDate(new Date(s.rezim.ostryOd)) : '—'}.`}</p>
       ${s.rezim.zkusebni ? html`<div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn soft" data-act="demo">Naplnit půl rokem provozu</button>
         <button class="btn soft" data-act="reset">Obnovit zkušební data</button>
         <button class="btn primary" data-act="golive">Přepnout na ostrý provoz…</button>
       </div>` : ''}
@@ -227,6 +228,15 @@ async function renderData(box, s, rerender) {
     </div>
     <p class="sub">Verze aplikace ${APP_VERSION}</p>
   `);
+  box.querySelector('[data-act="demo"]')?.addEventListener('click', async () => {
+    const ok = await modal({ title: 'Naplnit půl rokem provozu?', body: '<p>Nahraje se asi 660 vymyšlených zákazníků a půl roku práce: návštěvy, zprávy, doklady za frézování, protokoly, faktury, nabídky, náklady, poptávky, výjezdy a plán na další tři týdny. Fotky ne.</p><p class="sub">Dosavadní zkušební data se nahradí. Zákazníci, které jsi zadal sám, zůstanou. Všechno zmizí při přepnutí na ostrý provoz. PDF se u ukázkových zpráv vytvoří až při otevření.</p>', actions: [{ label: 'Zrušit', value: false }, { label: 'Naplnit', value: true, kind: 'primary' }] });
+    if (!ok) return;
+    toast('Nahrávám ukázková data…');
+    const { fillDemo } = await import('../demo.js');
+    const r = await fillDemo();
+    toast(`Hotovo: ${r.customers} zákazníků, ${r.documents} dokumentů, ${r.invoices} faktur`);
+    setTimeout(() => { location.hash = '#dnes'; location.reload(); }, 1200);
+  });
   box.querySelector('[data-act="reset"]')?.addEventListener('click', async () => {
     const ok = await modal({ title: 'Obnovit zkušební data?', body: '<p>Smažou se zkušební návštěvy, dokumenty, faktury a nabídky a znovu se nahrají ukázkoví zákazníci. Zákazníci, které jsi zadal sám, zůstanou.</p>', actions: [{ label: 'Zrušit', value: false }, { label: 'Obnovit', value: true, kind: 'primary' }] });
     if (!ok) return;

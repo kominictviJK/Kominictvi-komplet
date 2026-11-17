@@ -7,7 +7,7 @@ import {
   revenueByMonth, PAUSAL_LIMITS, invoiceState, reminderDue, documentsToInvoice, createInvoice, sumItems,
   offerTotals, createOffer, CATEGORIES, catLabel, saveExpense, applyRecurring, saveRecurring, guessCategory,
 } from '../finance.js';
-import { buildInvoicePdf } from '../pdf.js';
+import { buildInvoicePdf, buildVisitPdf } from '../pdf.js';
 import { smsQueue } from '../smsqueue.js';
 import { podpis, sendOut } from '../share.js';
 import { html, icon, toast, modal, isoDate, parseIso, fmtDate, fmtMoney, monthName, monthShort } from '../ui.js';
@@ -156,6 +156,7 @@ async function invoiceDetail(id, rerender) {
   });
   if (act === 'send') {
     if (!inv.pdf) { inv.pdf = await buildInvoicePdf(inv, c, settings(), docs); await put('invoices', inv); }
+    for (const d of docs) if (!d.pdf) { d.pdf = await buildVisitPdf(d, c, settings()); await put('documents', d); }
     const files = [new File([inv.pdf], `Faktura-${inv.no.replace('/', '-')}.pdf`, { type: 'application/pdf' }), ...docs.filter((d) => d.pdf).map((d) => new File([d.pdf], `Zprava-${d.no.replace(/\//g, '-')}.pdf`, { type: 'application/pdf' }))];
     const s = settings();
     const text = `Dobrý den, v příloze zasílám fakturu č. ${inv.no} na částku ${fmtMoney(inv.total)} se splatností do ${fmtDate(parseIso(inv.due))}${docs.length ? ` a k ní ${docs.length === 1 ? `zprávu č. ${docs[0].no}` : `zprávy č. ${docs.map((d) => d.no).join(', ')}`}` : ''}. Platbu můžete provést převodem na účet ${s.firma.ucet || '…'}, VS ${inv.vs}, nebo jednoduše QR kódem na faktuře. S pozdravem ${podpis()}`;

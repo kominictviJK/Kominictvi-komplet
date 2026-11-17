@@ -1,5 +1,5 @@
 // Návštěva: šablona → formulář zprávy → platba → podpis → hotovo (odeslání)
-import { get } from '../db.js';
+import { get, put } from '../db.js';
 import { settings } from '../settings.js';
 import { displayName } from '../customers.js';
 import { FUEL_LABEL } from '../lhuty.js';
@@ -29,6 +29,11 @@ export async function render(el, { args, go }) {
   if (!d) { el.innerHTML = String(html`<div class="card empty">Návštěva nenalezena. <a href="#dnes">Zpět na Dnes</a></div>`); return; }
   const customer = await get('customers', d.customerId);
   if (d.status === 'final') d.step = 'hotovo';
+  // ukázková / obnovená data: PDF se vytvoří až při prvním otevření
+  if (d.status === 'final' && !d.pdf) {
+    el.innerHTML = '<div class="card empty">Připravuji PDF…</div>';
+    try { d.pdf = await buildVisitPdf(d, customer, settings()); await put('documents', d); } catch (e) { console.error(e); }
+  }
   if (!d.step) d.step = d.kind === 'doklad' ? 'platba' : 'formular';
   const ctx = { el, d, customer, go };
   draw(ctx);
