@@ -14,6 +14,7 @@ import { html, icon, toast, modal, isoDate, parseIso, fmtDate, fmtMoney, monthNa
 import { uid, del } from '../db.js';
 import { hasAi, readReceipt } from '../ai.js';
 import { pending } from '../sync.js';
+import { renderPdf } from '../pdfview.js';
 
 const state = { tab: 'prehled', month: null, cat: 'vse' };
 
@@ -154,12 +155,18 @@ async function invoiceDetail(id, rerender) {
       ${(inv.reminders || []).map((x) => html`<p class="sub">Upomínka ${x.level} poslána ${fmtDate(new Date(x.at))}</p>`)}`),
     actions: [
       { label: 'Poslat e-mailem / sdílet', value: 'send', kind: 'primary' },
+      { label: 'Náhled', value: 'preview' },
       ...(inv.status === 'open' ? [{ label: 'Zaplaceno', value: 'paid' }] : []),
       ...(r ? [{ label: `Upomínka ${r}`, value: 'remind', kind: 'danger' }] : []),
       ...(inv.status === 'open' ? [{ label: 'Stornovat', value: 'storno' }] : []),
       { label: 'Zavřít', value: null },
     ],
   });
+  if (act === 'preview') {
+    if (!inv.pdf) { inv.pdf = await buildInvoicePdf(inv, c, settings(), docs); await put('invoices', inv); }
+    await modal({ title: `Faktura ${inv.no}`, body: '<div id="pvbox"></div>', actions: [{ label: 'Zavřít', value: null }], onOpen: (root) => renderPdf(inv.pdf, root.querySelector('#pvbox')) });
+    return invoiceDetail(id, rerender);
+  }
   if (act === 'send') {
     if (!inv.pdf) { inv.pdf = await buildInvoicePdf(inv, c, settings(), docs); await put('invoices', inv); }
     for (const d of docs) if (!d.pdf) { d.pdf = await buildVisitPdf(d, c, settings()); await put('documents', d); }
