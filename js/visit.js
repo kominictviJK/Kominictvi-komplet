@@ -13,15 +13,29 @@ export const KINDS = {
   doklad: 'Jen doklad (frézování, ostatní práce)',
 };
 
-function emptyFlue() { return { material: '', materialOther: '', diameter: '', length: '', elbows: { e90: 0, e45: 0, flex: 0, none: false } }; }
+function emptyFlue() { return { material: '', materialOther: '', diameter: '', length: '', elbows: { e90: 0, e45: 0, flex: 0, none: false }, separate: 'samostatný', opening: '', reduction: '' }; }
+const flueFrom = (f) => ({ ...emptyFlue(), ...structuredClone(f), elbows: { ...emptyFlue().elbows, ...(f.elbows || {}) } });
 
 function applianceFrom(a = {}) {
   const known = !a.kind || APPLIANCE_KINDS.includes(a.kind);
   return {
     kind: known ? (a.kind || 'kotel') : 'jiný', kindOther: known ? '' : a.kind, brand: a.brand || '', kw: a.kw || '',
     floor: /pp/i.test(a.floor || '') ? 'PP' : 'NP', placement: a.placement || [], placementOther: '',
-    flue: a.flue ? structuredClone(a.flue) : emptyFlue(),
+    flue: a.flue ? flueFrom(a.flue) : emptyFlue(),
   };
+}
+
+export const DETAIL_DEFAULTS = {
+  bodyMaterial: '', bodyMaterialOther: '', flues: 1, flueNo: 1, otherFlues: '', flueSize: '', milled: false,
+  founded: '', outlet: '', buildHeight: '', pathType: 'individuální', layers: '', air: '', cleanFrom: [], access: [], ashDoor: '', descOverride: '',
+};
+export const DETAIL_KEYS = Object.keys(DETAIL_DEFAULTS);
+const SITE_KEYS = ['objType', 'pp', 'np', 'roof', 'owner', 'place'];
+export function siteFrom(obj, prev) {
+  const guess = { RD: 'rodinný dům', BD: 'bytový dům' }[obj.type] || '';
+  const site = { objType: obj.objType || guess, pp: obj.pp ?? '', np: obj.np ?? '', roof: obj.roof || '', owner: obj.owner || '', place: obj.place || '', hidden: true, notes: [], noteText: '' };
+  if (prev) for (const k of SITE_KEYS) if (!site[k] && prev[k]) site[k] = prev[k];
+  return site;
 }
 
 // Komín ve zprávě – předvyplněný z karty zákazníka (a z minulé zprávy, pokud existuje)
@@ -35,9 +49,12 @@ export function chimneyFrom(k, prev) {
     defects: [], defectOther: '', deadline: { mode: '', date: '' },
     recs: [], recOther: '', conclusion: '',
   };
+  // podrobný popis komínu (vzor dle přílohy č. 3) – z karty, příště se jen převezme
+  for (const key of DETAIL_KEYS) base[key] = structuredClone(k[key] ?? DETAIL_DEFAULTS[key]);
   if (prev) {
     // převzít technický popis z minulé zprávy, výsledek kontroly je nový
-    Object.assign(base, structuredClone({ fuel: prev.fuel, ut: prev.ut, condensing: prev.condensing, appliances: prev.appliances, body: prev.body, liner: prev.liner, revisionNo: prev.revisionNo, revisionMissing: prev.revisionMissing, height: prev.height }));
+    Object.assign(base, structuredClone({ fuel: prev.fuel, ut: prev.ut, condensing: prev.condensing, appliances: prev.appliances.map((a) => ({ ...a, flue: flueFrom(a.flue || {}) })), body: prev.body, liner: prev.liner, revisionNo: prev.revisionNo, revisionMissing: prev.revisionMissing, height: prev.height }));
+    for (const key of DETAIL_KEYS) if (prev[key] !== undefined && k[key] === undefined) base[key] = structuredClone(prev[key]);
   }
   return base;
 }
@@ -66,7 +83,7 @@ export async function createDraft({ customerId, objectId, appointmentId = null, 
     id: uid('d_'), status: 'draft', kind, customerId: c.id, objectId: obj.id, appointmentId,
     date: isoDate(), createdAt: new Date().toISOString(), trial: !!s.rezim.zkusebni,
     sameAsLast: !!(sameAsLast && last), basedOn: last?.id || null,
-    chimneys, note: '', purpose: kind === 'doklad' ? 'frézování komínového průduchu' : '',
+    chimneys, site: siteFrom(obj, last?.site), note: '', purpose: kind === 'doklad' ? 'frézování komínového průduchu' : '',
     payment: {
       items: kind === 'doklad'
         ? [{ id: uid('i_'), label: 'Frézování komínového průduchu', qty: 1, unit: 'm', price: s.cenik.frezovaniZaMetr }]
@@ -170,8 +187,10 @@ export async function finalize(draft, pdfBuilder) {
         fuel: k.fuel, condensing: k.condensing, lastCheck: doc.date, body: k.body, liner: k.liner,
         revisionNo: k.revisionMissing ? '' : k.revisionNo, height: k.height,
         appliances: k.appliances.map((a) => ({ kind: a.kind === 'jiný' ? a.kindOther : a.kind, brand: a.brand, kw: a.kw, floor: a.floor, placement: a.placement, flue: a.flue })),
+        ...Object.fromEntries(DETAIL_KEYS.filter((key) => key !== 'descOverride').map((key) => [key, structuredClone(k[key])])),
       });
     }
+    if (doc.site) for (const key of SITE_KEYS) obj[key] = doc.site[key];
   }
   customer.isNew = false;
   await put('customers', customer);

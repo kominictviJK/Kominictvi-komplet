@@ -5,9 +5,12 @@ import { displayName } from '../customers.js';
 import { FUEL_LABEL } from '../lhuty.js';
 import {
   FUELS, APPLIANCE_KINDS, PLACEMENTS, FLOORS, BODY_TYPES, LINERS, FLUES, DEFECTS, RECOMMENDATIONS, CONCLUSIONS, elbowsText, label,
+  OBJECT_TYPES, ROOFS as OBJ_ROOFS, BODY_MATERIALS, FOUNDED, OTHER_FLUES, PATH_TYPES, LAYERS, AIR_SUPPLY, CLEAN_FROM, ACCESS, ASH_DOOR, NOTE_CHIPS,
 } from '../catalog.js';
+import { chimneyBullets, accessBullets, objectLine } from '../reporttext.js';
 import {
   KINDS, createDraft, saveDraft, openDraftForAppointment, lastFinalDocument, chimneyFrom, suggestConclusion, missing, finalize, reserveNumber,
+  DETAIL_DEFAULTS, siteFrom,
 } from '../visit.js';
 import { buildVisitPdf } from '../pdf.js';
 import { spdString, qrSvg, paymentTotal, METHODS } from '../payment.js';
@@ -35,6 +38,14 @@ export async function render(el, { args, go }) {
     try { d.pdf = await buildVisitPdf(d, customer, settings()); await put('documents', d); } catch (e) { console.error(e); }
   }
   if (!d.step) d.step = d.kind === 'doklad' ? 'platba' : 'formular';
+  if (d.status !== 'final' && d.kind === 'zprava') {
+    // starší koncepty: doplnit nová pole podrobného popisu
+    d.site ||= siteFrom(customer.objects.find((o) => o.id === d.objectId) || customer.objects[0]);
+    for (const k of d.chimneys) {
+      for (const [key, v] of Object.entries(DETAIL_DEFAULTS)) if (k[key] === undefined) k[key] = structuredClone(v);
+      for (const a of k.appliances) a.flue = { separate: 'samostatný', opening: '', reduction: '', ...a.flue };
+    }
+  }
   const ctx = { el, d, customer, go };
   draw(ctx);
 }
@@ -133,6 +144,11 @@ function wire(box, ctx, redraw) {
     setPath(d, b.dataset.toggle, arr.includes(v) ? arr.filter((x) => x !== v) : [...arr, v]);
     afterChange(d, b.dataset.toggle); save(); keep();
   }));
+  box.querySelectorAll('[data-cnt]').forEach((b) => b.addEventListener('click', () => {
+    const [p, delta, min, max] = b.dataset.cnt.split('|');
+    setPath(d, p, Math.min(Number(max), Math.max(Number(min), (Number(getPath(d, p)) || 0) + Number(delta))));
+    save(); keep();
+  }));
   box.querySelectorAll('[data-inc]').forEach((b) => b.addEventListener('click', () => {
     const [p, delta] = b.dataset.inc.split('|');
     const v = Math.max(0, (Number(getPath(d, p)) || 0) + Number(delta));
@@ -159,7 +175,9 @@ function stepForm(box, ctx) {
   const { d } = ctx;
   box.innerHTML = String(html`
     ${d.sameAsLast ? html`<div class="note-box" style="margin-bottom:12px">Převzato z minulé zprávy beze změn. Projdi hlavně nedostatky a závěr.</div>` : ''}
-    ${d.chimneys.map((k, i) => chimneyForm(k, i, d.chimneys.length))}
+    ${siteForm(d.site)}
+    ${d.chimneys.map((k, i) => chimneyForm(k, i, d.chimneys.length, d.site))}
+    ${reportForm(d.site)}
     <div style="display:flex;gap:10px;justify-content:space-between;margin-top:14px;flex-wrap:wrap">
       <button class="btn soft" data-act="add-ch">+ další komín</button>
       <button class="btn primary" data-act="next">Pokračovat na platbu ›</button>
@@ -232,10 +250,43 @@ function stepForm(box, ctx) {
   });
   box.querySelectorAll('[data-ptag]').forEach((sel) => sel.addEventListener('change', async () => { d.photos[Number(sel.dataset.ptag)].tag = sel.value; await saveDraft(d); }));
   box.querySelectorAll('[data-pdel]').forEach((b) => b.addEventListener('click', async () => { d.photos.splice(Number(b.dataset.pdel), 1); await saveDraft(d); redraw(); }));
+  box.querySelectorAll('[data-desc-edit]').forEach((b) => b.addEventListener('click', async () => {
+    const k = d.chimneys[Number(b.dataset.descEdit)];
+    k.descOverride = chimneyBullets({ ...k, descOverride: '' }, d.site).map((x) => `– ${x}`).join('\n');
+    await saveDraft(d); redraw();
+  }));
+  box.querySelectorAll('[data-desc-auto]').forEach((b) => b.addEventListener('click', async () => { d.chimneys[Number(b.dataset.descAuto)].descOverride = ''; await saveDraft(d); redraw(); }));
   box.querySelector('[data-act="next"]').addEventListener('click', () => goStep(ctx, 'platba'));
 }
 
-function chimneyForm(k, i, total) {
+const frow = (title, content) => html`<div class="frow"><span class="flabel">${title}</span><div class="fval">${content}</div></div>`;
+const counter = (path, value, min, max, unit = '') => html`<span class="counter"><button type="button" data-cnt="${path}|-1|${min}|${max}" aria-label="ubrat">−</button><b>${value ?? 0}${unit}</b><button type="button" data-cnt="${path}|1|${min}|${max}" aria-label="přidat">+</button></span>`;
+
+function siteForm(site) {
+  const line = objectLine(site);
+  return html`
+    <div class="card fcard">
+      <div class="card-title"><h2>Objekt</h2><span class="sub">${line || 'typ, podlaží, střecha'}</span></div>
+      ${frow('Typ objektu', html`<div class="chips">${OBJECT_TYPES.map((x) => chipOne('site.objType', x, x, site.objType))}</div>`)}
+      ${frow('Podlaží', html`<div class="inline"><span class="sub">podzemní</span>${counter('site.pp', site.pp || 0, 0, 3, ' PP')}<span class="sub">nadzemní</span>${counter('site.np', site.np || 0, 0, 12, ' NP')}</div>`)}
+      ${frow('Střecha', html`<div class="chips">${OBJ_ROOFS.map((x) => chipOne('site.roof', x, x, site.roof))}</div>`)}
+      ${frow('Vlastník objektu', html`${inp('site.owner', site.owner, { ph: 'jen když se liší od objednatele (jméno, adresa, IČO)' })}`)}
+      ${frow('U koho provedeno', html`${inp('site.place', site.place, { ph: 'jen když se liší – např. byt pí Nováková, 2. NP' })}`)}
+    </div>`;
+}
+
+function reportForm(site) {
+  return html`
+    <div class="card fcard" style="margin-top:12px">
+      <div class="card-title"><h2>Na zprávě</h2></div>
+      ${frow('Zakryté části', html`<div class="chips">${chipBool('site.hidden', site.hidden !== false, 'Odstavec o nepřístupných prostupech konstrukcemi')}</div>
+        <p class="sub" style="margin:6px 0 0">Vypni jen u venkovního komínu viditelného celého nebo u hrubé stavby.</p>`)}
+      ${frow('Poznámky', html`<div class="chips">${NOTE_CHIPS.map((x) => chipMany('site.notes', x, x, site.notes))}</div>
+        <div style="margin-top:8px">${inp('site.noteText', site.noteText, { ph: 'vlastní poznámka na zprávu (tiskne se)' })}</div>`)}
+    </div>`;
+}
+
+function chimneyForm(k, i, total, site = {}) {
   const p = `chimneys.${i}`;
   const row = (title, content) => html`<div class="frow"><span class="flabel">${title}</span><div class="fval">${content}</div></div>`;
   return html`
@@ -265,15 +316,37 @@ function chimneyForm(k, i, total) {
               ${[['e90', '90°'], ['e45', '45°'], ['flex', 'flexi']].map(([key, l]) => html`<span class="counter"><button type="button" data-inc="${ap}.flue.elbows.${key}|-1" aria-label="ubrat">−</button><b>${e[key] || 0}× ${l}</b><button type="button" data-inc="${ap}.flue.elbows.${key}|1" aria-label="přidat">+</button></span>`)}
               ${chipBool(`${ap}.flue.elbows.none`, e.none, 'bez kolen')}
               <span class="sub">${elbowsText(e)}</span></div>`)}
+            ${row('Kouřovod – další', html`<div class="chips">${['samostatný', 'společný'].map((x) => chipOne(`${ap}.flue.separate`, x, x, a.flue.separate))}
+              ${chipOne(`${ap}.flue.opening`, true, 'kontrolní otvor ano', a.flue.opening)}${chipOne(`${ap}.flue.opening`, false, 'kontrolní otvor ne', a.flue.opening)}</div>
+              <div class="inline" style="margin-top:8px">${inp(`${ap}.flue.reduction`, a.flue.reduction, { ph: 'redukce, např. 130/160', w: '200px' })}<span class="sub">mm (jen když je)</span></div>`)}
           </div>`;
       })}
       ${k.appliances.length < 2 ? html`<button class="btn small soft" data-add-ap="${i}" style="margin:6px 0 4px">+ druhý spotřebič na tento komín</button>` : ''}
 
       ${row('Komínové těleso', html`<div class="chips">${BODY_TYPES.map((x) => chipMany(`${p}.body`, x, x, k.body))}</div>`)}
+      ${row('Materiál tělesa', html`<div class="chips">${BODY_MATERIALS.map((x) => chipOne(`${p}.bodyMaterial`, x, x, k.bodyMaterial))}</div>
+        ${k.bodyMaterial === 'jiný' ? html`<div style="margin-top:8px">${inp(`${p}.bodyMaterialOther`, k.bodyMaterialOther, { ph: 'jaký materiál' })}</div>` : ''}`)}
+      ${row('Průduchy', html`<div class="inline">${html`<span class="sub">počet</span>`}${counter(`${p}.flues`, k.flues || 1, 1, 12)}
+        ${(k.flues || 1) > 1 ? html`<span class="sub">napojen do č.</span>${counter(`${p}.flueNo`, k.flueNo || 1, 1, k.flues || 1)}` : ''}</div>
+        ${(k.flues || 1) > 1 ? html`<div class="chips" style="margin-top:8px"><span class="sub">ostatní průduchy:</span>${OTHER_FLUES.map((x) => chipOne(`${p}.otherFlues`, x, x, k.otherFlues))}</div>` : ''}`)}
+      ${row('Založení a ústí', html`<div class="chips">${FOUNDED.map((x) => chipOne(`${p}.founded`, x, `založen ${x === 'na půdě' ? x : `v ${x}`}`, k.founded))}</div>
+        <div class="inline" style="margin-top:8px">${inp(`${p}.outlet`, k.outlet, { ph: 'nad střechou m', mode: 'decimal', w: '150px' })}<span class="sub">m nad střechou</span></div>`)}
       ${row('Vložka', html`<div class="chips">${LINERS.map((x) => chipOne(`${p}.liner.material`, x, x, k.liner.material))}</div>
-        <div class="inline" style="margin-top:8px">${k.liner.material === 'jiná' ? inp(`${p}.liner.materialOther`, k.liner.materialOther, { ph: 'jaká vložka', w: '220px' }) : ''}${inp(`${p}.liner.diameter`, k.liner.diameter, { ph: 'světlost Ø mm', mode: 'numeric', w: '150px' })}</div>`)}
+        <div class="inline" style="margin-top:8px">${k.liner.material === 'jiná' ? inp(`${p}.liner.materialOther`, k.liner.materialOther, { ph: 'jaká vložka', w: '220px' }) : ''}${inp(`${p}.liner.diameter`, k.liner.diameter, { ph: 'světlost Ø mm', mode: 'numeric', w: '150px' })}
+          ${k.liner.material === 'není' ? inp(`${p}.flueSize`, k.flueSize, { ph: 'průduch např. 150×150', w: '190px' }) : chipBool(`${p}.milled`, k.milled, 'průduch rozšířen frézou')}</div>`)}
       ${row('Revizní zpráva', html`<div class="inline">${inp(`${p}.revisionNo`, k.revisionNo, { ph: 'číslo revizní zprávy', w: '220px' })}${chipBool(`${p}.revisionMissing`, k.revisionMissing, 'nedoloženo')}</div>`)}
-      ${row('Účinná výška', html`<div class="inline">${inp(`${p}.height`, k.height, { ph: 'm', mode: 'decimal', w: '110px' })}<span class="sub">metrů</span></div>`)}
+      ${row('Výška', html`<div class="inline"><span class="sub">stavební</span>${inp(`${p}.buildHeight`, k.buildHeight, { ph: 'm', mode: 'decimal', w: '90px' })}<span class="sub">účinná</span>${inp(`${p}.height`, k.height, { ph: 'm', mode: 'decimal', w: '90px' })}<span class="sub">metrů</span></div>`)}
+      ${row('Spalinová cesta', html`<div class="chips">${PATH_TYPES.map((x) => chipOne(`${p}.pathType`, x, x, k.pathType))}${LAYERS.map((x) => chipOne(`${p}.layers`, x, x, k.layers))}</div>`)}
+      ${row('Přívod vzduchu', html`<div class="chips">${AIR_SUPPLY.map((x) => chipOne(`${p}.air`, x, x, k.air))}</div>`)}
+      ${row('Čištění', html`<div class="chips">${CLEAN_FROM.map((x) => chipMany(`${p}.cleanFrom`, x, x, k.cleanFrom))}</div>`)}
+      ${row('Přístup', html`<div class="chips">${ACCESS.map((x) => chipMany(`${p}.access`, x, x, k.access))}</div>`)}
+      ${row('Vybírací otvor', html`<div class="chips">${ASH_DOOR.map((x) => chipOne(`${p}.ashDoor`, x, x, k.ashDoor))}</div>`)}
+      <div class="desc-preview">
+        <div class="card-title"><h3>Popis komínu na zprávě</h3>${k.descOverride ? html`<button class="btn small" data-desc-auto="${i}">Vrátit automatický</button>` : html`<button class="btn small soft" data-desc-edit="${i}">Upravit ručně</button>`}</div>
+        ${k.descOverride
+          ? html`<textarea class="input" rows="6" data-bind="${p}.descOverride">${k.descOverride}</textarea><p class="sub" style="margin:4px 0 0">Každý řádek = jedna odrážka. Ruční text se příště převezme.</p>`
+          : html`<ul>${chimneyBullets(k, site).map((x) => html`<li>${x}</li>`)}${accessBullets(k).map((x) => html`<li class="sub">${x}</li>`)}</ul>`}
+      </div>
 
       <h3 class="fsec">Zjištěné nedostatky</h3>
       ${row('Odstraněné na místě', html`<div class="chips">${chipBool(`${p}.fixed.noDefects`, k.fixed.noDefects, 'bez viditelných závad')}${chipBool(`${p}.fixed.camera`, k.fixed.camera, 'prohlídka inspekční kamerou')}</div>

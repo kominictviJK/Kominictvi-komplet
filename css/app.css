@@ -406,3 +406,6 @@ label.chip input { accent-color: var(--bronze); }
 @media (max-width: 900px) {
   .split { grid-template-columns: 1fr !important; }
 }
+.desc-preview { background: #FBF8F2; border: 1px solid var(--line, #E4DDD2); border-radius: 10px; padding: 10px 14px; margin: 10px 0 6px; }
+.desc-preview ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.45; }
+.desc-preview textarea { width: 100%; font: inherit; }

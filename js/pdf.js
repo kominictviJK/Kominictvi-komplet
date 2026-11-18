@@ -7,6 +7,8 @@ import { FUEL_LABEL } from './lhuty.js';
 import { displayName } from './customers.js';
 import { parseIso, fmtDate } from './ui.js';
 import { protocolRows, protocolDefects } from './protocol.js';
+import { objectLine, placeTxt, applianceLine, flueLine, chimneyBullets, airLine, accessBullets, chimneyTitle } from './reporttext.js';
+import { HIDDEN_PARTS_TEXT } from './catalog.js';
 
 const W = 595.28, H = 841.89, M = 40;
 const C = {
@@ -259,9 +261,141 @@ function receipt(ctx, d, customer, s, payerSign, stampImgs, standalone) {
     ctx.line(M, top + 40, M + 190, { color: C.muted });
     ctx.text('podpis plátce', M + 95 - ctx.width('podpis plátce', ctx.f.r, 7) / 2, top + 43, { size: 7, color: C.muted });
   }
+  if (d.payment.method === 'qr' && s.firma.ucet) {
+    const spd = spdString({ account: s.firma.ucet, amount: total, vs: d.vs, message: `Kominictvi ${d.no}` });
+    if (spd) {
+      const qx = M + 222, size = 56;
+      drawQr(ctx, spd, qx, top - 10, size);
+      ctx.text('QR platba', qx + size + 8, top - 6, { font: ctx.f.b, size: 8, color: C.bronze });
+      ctx.text(`VS ${d.vs || ''}`, qx + size + 8, top + 5, { size: 8 });
+      ctx.text(`účet ${s.firma.ucet}`, qx + size + 8, top + 15, { size: 7.5, color: C.muted });
+    }
+  }
   stampAndSign(ctx, W - M - 150, top - 8, stampImgs, `přijal: ${s.firma.jmeno.split('–')[0].trim()}`);
   ctx.y = top + 52;
 }
+
+// ---------- Zpráva dle vzoru přílohy č. 3 (podrobný popis, 2 strany) ----------
+const CONCL_ALL = [['vyhovuje', 'VYHOVUJE'], ['poodstraneni', 'VYHOVUJE PO ODSTRANĚNÍ ZJIŠTĚNÝCH NEDOSTATKŮ'], ['nevyhovuje', 'NEVYHOVUJE']];
+const deadlineTxt = (k) => (k.deadline.mode === 'neprodlene' ? 'neprodleně' : k.deadline.mode === 'datum' && k.deadline.date ? `do ${fmtDate(parseIso(k.deadline.date))}` : 'nebyl stanoven');
+
+function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false } = {}) {
+  const site = d.site || {};
+  const many = d.chimneys.length > 1;
+  const full = W - 2 * M;
+  const sec = (t) => {
+    ctx.y += 2;
+    ctx.para(t, M, full, { font: ctx.f.h, size: 9.5, color: C.bronze, lh: 11.5 });
+    ctx.line(M, ctx.y, W - M); ctx.y += 4;
+  };
+  // zákonný popisek (malý) a hodnota pod ním
+  const legal = (lbl, val, mark = '') => ctx.block(() => {
+    ctx.para(`${lbl}${mark}:`, M, full, { size: 8.2, color: C.muted, lh: 10 });
+    ctx.para(val, M, full, { font: ctx.f.s, size: 10, lh: 12.6 });
+    ctx.y += 5;
+  }, 30);
+  const LW = 92;
+  const row = (lbl, val) => {
+    if (!val || (Array.isArray(val) && !val.length)) return;
+    ctx.block(() => {
+      const top = ctx.y;
+      ctx.text(lbl, M, top, { size: 9.3, color: C.muted });
+      if (Array.isArray(val)) {
+        ctx.y = top;
+        for (const b of val) {
+          const y0 = ctx.y;
+          ctx.text('–', M + LW, y0, { size: 10 });
+          ctx.para(b, M + LW + 10, full - LW - 10, { size: 10, lh: 12.8 });
+        }
+      } else { ctx.y = top; ctx.para(val, M + LW, full - LW, { size: 10, lh: 12.8 }); }
+      ctx.y = Math.max(ctx.y, top + 12.8) + 3.5;
+    }, 24);
+  };
+
+  // čísla a data
+  const issued = d.finalizedAt ? isoOf(d.finalizedAt) : new Date().toISOString().slice(0, 10);
+  const cols = [['Číslo zprávy', d.no || '—'], ['Datum vystavení zprávy', fmtDate(parseIso(issued))], ['Datum provedení čištění a kontroly', fmtDate(parseIso(d.date))]];
+  const cw = full / 3, top0 = ctx.y;
+  cols.forEach(([l, v], i) => { ctx.text(l, M + i * cw, top0, { size: 7.8, color: C.muted }); ctx.text(v, M + i * cw, top0 + 10, { font: ctx.f.b, size: 10.5 }); });
+  ctx.y = top0 + 28;
+
+  // údaje o oprávněné osobě, objednateli a objektu
+  sec('ÚDAJE O OPRÁVNĚNÉ OSOBĚ A OBJEDNATELI');
+  const f = s.firma;
+  legal('Název, sídlo a IČ právnické nebo podnikající fyzické osoby, jméno a příjmení oprávněné osoby nebo jejího zástupce, provádějící čištění a kontrolu spalinové cesty',
+    [f.jmeno, f.adresa, `IČO ${f.ico}`, f.zastupce ? `odpovědný zástupce: ${f.zastupce}` : ''].filter(Boolean).join(', '));
+  const a = object?.address || {};
+  const addr = [a.street, [a.zip, a.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+  legal('Název, sídlo a IČ, případně jméno a příjmení objednatele', [displayName(customer), customer.billingAddress || addr, customer.ico ? `IČO ${customer.ico}` : ''].filter(Boolean).join(', '));
+  if (site.owner?.trim()) legal('Název, sídlo a IČ, případně jméno a příjmení vlastníka objektu', site.owner.trim(), ' **)');
+  if (site.place?.trim()) legal('Název, sídlo a IČ právnické nebo podnikající fyzické osoby, případně jméno a příjmení fyzické osoby, u které bylo provedeno čištění a kontrola spalinové cesty', site.place.trim(), ' **)');
+  legal('Adresa objektu, ve kterém bylo provedeno čištění a kontrola spalinové cesty', addr);
+
+  // specifikace
+  ctx.block(() => sec('SPECIFIKACE SPALINOVÉ CESTY, U KTERÉ BYLO PROVEDENO ČIŠTĚNÍ A KONTROLA, VČETNĚ DRUHU PALIVA A DRUHU, TYPU, PROVEDENÍ A VÝKONU PŘIPOJENÉHO SPOTŘEBIČE PALIV'), 120);
+  row('Objekt', objectLine(site));
+  d.chimneys.forEach((k, i) => {
+    if (many) ctx.block(() => { ctx.y += 3; ctx.text(`${i + 1}. komín – ${chimneyTitle(k)}`, M, ctx.y, { font: ctx.f.b, size: 10, color: C.bronze }); ctx.y += 14; }, 90);
+    k.appliances.forEach((ap, ai) => {
+      const nn = k.appliances.length > 1 ? ` ${ai + 1}` : '';
+      row(`Umístění${nn}`, placeTxt(ap));
+      row(`Spotřebič${nn}`, applianceLine(k, ap));
+      row(`Kouřovod${nn}`, flueLine(ap));
+    });
+    row('Komín', chimneyBullets(k, site));
+    row('Přívod vzduchu', airLine(k));
+    row('Přístup', accessBullets(k));
+  });
+  if (site.hidden !== false) ctx.block(() => { ctx.y += 2; ctx.para(HIDDEN_PARTS_TEXT, M, full, { size: 8.5, color: C.muted, lh: 10.8 }); ctx.y += 4; }, 30);
+
+  // zjištění
+  if (breakFindings) ctx.page();
+  ctx.block(() => sec('ZJIŠTĚNÍ PŘI ČIŠTĚNÍ A KONTROLE'), 80);
+  const per = (fn) => (many ? d.chimneys.map((k, i) => `${i + 1}. komín: ${fn(k)}`).join('\n') : fn(d.chimneys[0]));
+  legal('Číslo zprávy o revizi spalinové cesty (je-li k dispozici)', per((k) => (k.revisionMissing || !k.revisionNo ? 'nebyla předložena' : k.revisionNo)));
+  legal('Zjištěné nedostatky, které byly odstraněny na místě', per((k) => {
+    const t = [k.fixed.text.trim(), k.fixed.camera ? 'provedena prohlídka inspekční kamerou' : ''].filter(Boolean);
+    return t.length ? `${cap1(t.join('; '))}.` : 'Nebyly zjištěny žádné nedostatky.';
+  }));
+  legal('Zjištěné nedostatky, které nebyly odstraněny na místě', per((k) => { const t = defectsText(k); return t.length ? `${cap1(t.join('; '))}.` : 'Nebyly zjištěny žádné nedostatky.'; }));
+  const anyDef = d.chimneys.some((k) => defectsText(k).length);
+  legal('Termín odstranění zjištěných nedostatků', anyDef ? per((k) => (defectsText(k).length ? deadlineTxt(k) : '—')) : '—');
+  const recs = d.chimneys.map((k, i) => [i, recsText(k)]).filter(([, r]) => r.length);
+  if (recs.length) legal('Další doporučení z hlediska protipožární bezpečnosti a snížení rizika otravy (ČSN 73 4201)', recs.map(([i, r]) => `${many ? `${i + 1}. komín: ` : ''}${cap1(r.join('; '))}.`).join('\n'));
+
+  // závěr + razítko a podpis
+  const same = d.chimneys.every((k) => k.conclusion === d.chimneys[0].conclusion);
+  ctx.block(() => {
+    ctx.y += 4;
+    const top = ctx.y, h = same ? 92 : 46 + d.chimneys.length * 15;
+    ctx.rect(M, top, full, h, { color: C.soft });
+    ctx.text('ZÁVĚR', M + 14, top + 9, { font: ctx.f.h, size: 11, color: C.bronze });
+    ctx.text('Spalinová cesta z hlediska bezpečného provozu:', M + 14, top + 24, { font: ctx.f.s, size: 9.5 });
+    let y = top + 40;
+    if (same) {
+      for (const [v, t] of CONCL_ALL) {
+        const on = d.chimneys[0].conclusion === v;
+        ctx.text(t, M + 14, y, { font: on ? ctx.f.h : ctx.f.r, size: on ? 12.5 : 9.5, color: on ? C.ink : C.muted });
+        if (!on) { const w = ctx.width(t, ctx.f.r, 9.5); ctx.line(M + 13, y + 5, M + 15 + w, { thickness: 0.9, color: C.muted }); }
+        if (!on && v === 'nevyhovuje') ctx.text('*)', M + 17 + ctx.width(t, ctx.f.r, 9.5), y - 1, { size: 7, color: C.muted });
+        y += on ? 17 : 13;
+      }
+    } else {
+      d.chimneys.forEach((k, i) => { ctx.text(`${i + 1}. komín – ${(CONCL_ALL.find(([v]) => v === k.conclusion) || [, '—'])[1]}`, M + 14, y, { font: ctx.f.h, size: 11 }); y += 15; });
+    }
+    ctx.text('Podpis a razítko oprávněné osoby:', W - M - 165, top + 9, { font: ctx.f.s, size: 8.5 });
+    stampAndSign(ctx, W - M - 160, top + 22, imgs, '');
+    ctx.y = top + h + 6;
+  }, 20);
+
+  // poznámky a vysvětlivky
+  const notes = [...(site.notes || []), site.noteText?.trim()].filter(Boolean);
+  if (notes.length) ctx.block(() => { ctx.text('Poznámky:', M, ctx.y, { font: ctx.f.b, size: 9 }); ctx.y += 12; notes.forEach((t) => { ctx.text('–', M, ctx.y, { size: 9 }); ctx.para(t, M + 10, full - 10, { size: 9, lh: 11.5 }); }); ctx.y += 3; }, 20);
+  const foot = [same ? '*) Nehodící se škrtne.' : '', site.owner?.trim() || site.place?.trim() ? '**) Uvede se pouze v případě, že údaje nejsou shodné s předchozími.' : '', 'Zpráva vydána v souladu s vyhláškou č. 34/2016 Sb., o čištění, kontrole a revizi spalinové cesty, příloha č. 3.'].filter(Boolean);
+  ctx.block(() => { foot.forEach((t) => { ctx.text(t, M, ctx.y, { size: 7.5, color: C.muted }); ctx.y += 9.5; }); ctx.y += 4; }, 10);
+}
+const cap1 = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
+const isoOf = (iso) => { const x = new Date(iso); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
 function footers(ctx, s, no) {
   const n = ctx.pages.length;
@@ -327,6 +461,17 @@ export async function buildVisitPdf(d, customer, s) {
     footers(ctx, s, d.no);
     return new Blob([await doc.save()], { type: 'application/pdf' });
   }
+  if (d.kind === 'zprava') {
+    // zkusit bez zalomení; když je víc stran, zalomit před „Zjištění“ (jako vzor: 1. strana popis, 2. strana výsledek)
+    const a = await renderVisit(d, customer, s, object, false);
+    if (a.pages === 1) return a.blob;
+    const b = await renderVisit(d, customer, s, object, true);
+    return b.pages <= a.pages ? b.blob : a.blob;
+  }
+  return (await renderVisit(d, customer, s, object, false)).blob;
+}
+
+async function renderVisit(d, customer, s, object, breakFindings) {
   const isReport = d.kind !== 'doklad';
   const title = isReport ? `Zpráva ${d.no}` : `Doklad ${d.no}`;
   const { doc, f, logo } = await setup(title);
@@ -339,11 +484,9 @@ export async function buildVisitPdf(d, customer, s) {
   });
   const ctx = new Ctx(doc, f, header);
   ctx.page();
-  parties(ctx, s, customer, isReport ? object : null);
+  if (!isReport) parties(ctx, s, customer, null);
   if (isReport) {
-    d.chimneys.forEach((k, i) => ctx.block(() => chimneyBlock(ctx, k, i, d.chimneys.length, imgs), 20));
-    ctx.text('Zpráva vydána v souladu s vyhláškou č. 34/2016 Sb., o čištění, kontrole a revizi spalinové cesty, příloha č. 3.', M, ctx.y, { size: 7.5, color: C.muted });
-    ctx.y += 12;
+    reportBody(ctx, d, customer, object, s, imgs, { breakFindings });
     // platební část jen na poslední straně, ukotvená dole (pod ✂)
     const y0 = ctx.y; ctx.dry = true; receipt(ctx, d, customer, s, imgs.payer, imgs, false); const h = ctx.y - y0; ctx.y = y0; ctx.dry = false;
     const bottom = H - M - 22;
@@ -356,7 +499,7 @@ export async function buildVisitPdf(d, customer, s) {
   }
   footers(ctx, s, d.no);
   const bytes = await doc.save();
-  return new Blob([bytes], { type: 'application/pdf' });
+  return { blob: new Blob([bytes], { type: 'application/pdf' }), pages: ctx.pages.length };
 }
 
 export function pdfFileName(d, customerName) {

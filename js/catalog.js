@@ -81,3 +81,26 @@ export function elbowsText(e = {}) {
   if (e.flex) parts.push(`${e.flex}× flexibilní`);
   return parts.join(' + ');
 }
+
+// ---------- Podrobný popis spalinové cesty (vzor dle přílohy č. 3) ----------
+export const OBJECT_TYPES = ['rodinný dům', 'bytový dům', 'chata / chalupa', 'provozovna', 'jiný'];
+export const ROOFS = ['sedlová', 'valbová', 'rovná', 'pultová', 'mansardová', 'stanová'];
+export const BODY_MATERIALS = ['plné pálené cihly', 'CDM cihly', 'komínové tvárnice', 'keramický systémový komín', 'nerezový komín', 'kámen', 'jiný'];
+export const FOUNDED = ['1. PP', '1. NP', '2. NP', 'na půdě'];
+export const OTHER_FLUES = ['větrání', 'nevyužité', 'další spotřebiče'];
+export const PATH_TYPES = ['individuální', 'společná'];
+export const LAYERS = ['jednovrstvá', 'vícevrstvá'];
+export const AIR_SUPPLY = ['trvalý přívod z venkovního prostředí', 'z interiéru (místnost s oknem)', 'potrubím z venku přímo ke spotřebiči', 'koaxiálně z venku (spotřebič typu C)'];
+export const CLEAN_FROM = ['z ústí komína ze střechy', 'komínovými dvířky na půdě', 'komínovými dvířky v místnosti', 'z komínové lávky'];
+export const ACCESS = ['po žebříku', 'střešním výlezem', 'po střešní lávce', 'z plošiny', 'bez výstupu na střechu'];
+export const ASH_DOOR = ['v patě komína', 've sklepě', 'v kotelně', 'v 1. NP', 'na půdě'];
+export const NOTE_CHIPS = [
+  'Spotřebič byl v době kontroly mimo provoz.',
+  'Ústí komína kontrolováno kamerou / zdola – výstup na střechu nebyl bezpečný.',
+  'Zpráva o revizi spalinové cesty nebyla předložena – doporučeno ji doložit.',
+  'Nový spotřebič: před uvedením do provozu je nutná revize spalinové cesty.',
+  'Zákazník upozorněn na nutnost odstranit hořlavé předměty z okolí komína.',
+  'Doporučeno zkrátit interval čištění (vlhké palivo, velké množství sazí).',
+  'Zákazník odmítl vyčištění kouřovodu.',
+];
+export const HIDDEN_PARTS_TEXT = 'Vzhledem k celkové dokončenosti objektu není možné provést kontrolu provedení prostupů spalinové cesty vodorovnými a svislými stavebními konstrukcemi, které jsou stavebně uzavřené a vizuálně nepřístupné; tyto části nejsou předmětem této zprávy.';

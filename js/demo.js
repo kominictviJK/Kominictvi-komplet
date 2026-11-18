@@ -60,12 +60,20 @@ function makeChimney(fuel, condensing, n) {
   else if (fuel === 'kapalna') appliances = [{ kind: 'kotel', brand: 'Viessmann Vitola', kw: 22, floor: 'PP', placement: ['kotelna'] }];
   else if (n === 1 && chance(0.55)) { const [brand, kw] = pick(BOILERS_SOLID); appliances = [{ kind: 'kotel', brand, kw, floor: chance(0.6) ? 'PP' : '1. NP', placement: ['kotelna'] }]; }
   else { const [kind, brand, kw] = pick(STOVES); appliances = [{ kind, brand, kw, floor: '1. NP', placement: ['obytná místnost'] }]; }
-  appliances.forEach((a) => { a.flue = { material: condensing ? 'plast' : pick(['ocel', 'ocel', 'nerez']), materialOther: '', diameter: condensing ? '80' : String(pick([120, 130, 150, 160])), length: String(pick([0.5, 1, 1, 1.5, 2])).replace('.', ','), elbows: { e90: int(0, 2), e45: int(0, 1), flex: 0, none: false } }; });
+  appliances.forEach((a) => { a.flue = { separate: 'samostatný', opening: chance(0.7), reduction: '', material: condensing ? 'plast' : pick(['ocel', 'ocel', 'nerez']), materialOther: '', diameter: condensing ? '80' : String(pick([120, 130, 150, 160])), length: String(pick([0.5, 1, 1, 1.5, 2])).replace('.', ','), elbows: { e90: int(0, 2), e45: int(0, 1), flex: 0, none: false } }; });
   return {
     id: uid('k_'), label: `Komín ${n}`, fuel, condensing: !!condensing, lastCheck: null, appliances,
     body: condensing ? ['systémové'] : fuel === 'plyn' ? ['vložkované'] : [pick(['zděné', 'zděné', 'vložkované', 'systémové'])],
     liner: { material: condensing ? 'plast' : fuel === 'plyn' ? 'nerez' : pick(['není', 'keramika', 'nerez', 'není']), materialOther: '', diameter: condensing ? '80' : String(pick([140, 150, 160, 180, 200])) },
-    height: String(pick([6, 6.5, 7, 7.5, 8, 8.5, 9, 10])).replace('.', ','), revisionNo: chance(0.5) ? `${int(10, 250)}/${int(2015, 2025)}` : '',
+    ...(() => { const eh = pick([6, 6.5, 7, 7.5, 8, 8.5, 9, 10]); const fl = condensing ? 1 : pick([1, 1, 2, 3]); return {
+      height: String(eh).replace('.', ','), buildHeight: String(eh + pick([0.5, 1, 1, 1.5])).replace('.', ','),
+      bodyMaterial: condensing ? 'keramický systémový komín' : pick(['plné pálené cihly', 'plné pálené cihly', 'CDM cihly', 'komínové tvárnice']), bodyMaterialOther: '',
+      flues: fl, flueNo: fl > 1 ? int(1, fl) : 1, otherFlues: fl > 1 ? pick(['větrání', 'nevyužité']) : '', flueSize: '', milled: fuel === 'plyn' && !condensing && chance(0.3),
+      founded: pick(['1. PP', '1. NP', '1. NP']), outlet: String(pick([0.8, 1, 1.2, 1.5, 1.6])).replace('.', ','), pathType: 'individuální', layers: condensing ? 'vícevrstvá' : '',
+      air: condensing ? 'koaxiálně z venku (spotřebič typu C)' : pick(['trvalý přívod z venkovního prostředí', 'z interiéru (místnost s oknem)']),
+      cleanFrom: [pick(['z ústí komína ze střechy', 'z ústí komína ze střechy', 'komínovými dvířky na půdě'])], access: [pick(['po žebříku', 'střešním výlezem', 'po střešní lávce'])], ashDoor: pick(['v patě komína', 've sklepě', 'v kotelně']), descOverride: '',
+    }; })(),
+    revisionNo: chance(0.5) ? `${int(10, 250)}/${int(2015, 2025)}` : '',
   };
 }
 
@@ -84,7 +92,7 @@ function makeCustomer(place, kind = 'osoba') {
     const solid = chance(0.55); const condensing = !solid && chance(0.38);
     const chimneys = [makeChimney(solid ? 'tuha' : chance(0.97) ? 'plyn' : 'kapalna', condensing, 1)];
     if (chance(solid ? 0.35 : 0.25)) chimneys.push(makeChimney('tuha', false, 2));
-    c.objects = [{ id: uid('o_'), type: 'RD', address, chimneys }];
+    c.objects = [{ id: uid('o_'), type: 'RD', objType: 'rodinný dům', pp: chance(0.5) ? 1 : 0, np: pick([1, 1, 2]), roof: pick(['sedlová', 'sedlová', 'valbová', 'mansardová']), owner: '', place: '', address, chimneys }];
   } else {
     c.name = kind === 'firma' ? pick(FIRMS) : kind === 'svj' ? pick(SVJ) : `Obec ${city}`;
     c.ico = String(int(10000000, 99999999)); c.email = kind === 'obec' ? `obec@${ascii(city).replace(/\s+/g, '')}.cz` : `info@${ascii(c.name).replace(/[^a-z]/g, '').slice(0, 12)}.cz`; c.delivery = 'email';
@@ -114,6 +122,7 @@ function chimneyDoc(k) {
     fixed: { noDefects: true, camera: false, text: '' }, defects: uniq, defectOther: '',
     deadline: uniq.length ? (conclusion === 'nevyhovuje' ? { mode: 'neprodlene', date: '' } : { mode: 'nestanoven', date: '' }) : { mode: '', date: '' },
     recs: uniq.map((d) => DEFECT_RECS[d]).filter(Boolean), recOther: '', conclusion,
+    ...Object.fromEntries(['bodyMaterial', 'bodyMaterialOther', 'flues', 'flueNo', 'otherFlues', 'flueSize', 'milled', 'founded', 'outlet', 'buildHeight', 'pathType', 'layers', 'air', 'cleanFrom', 'access', 'ashDoor', 'descOverride'].map((key) => [key, structuredClone(k[key])])),
   };
 }
 
@@ -172,6 +181,7 @@ export async function fillDemo(today = new Date()) {
           id: uid('d_'), status: 'final', kind, customerId: c.id, objectId: o.id, appointmentId: apt.id, date: isoDate(d),
           createdAt: created.toISOString(), finalizedAt: finished.toISOString(), trial: true, sameAsLast: false, basedOn: null,
           chimneys: kind === 'zprava' ? o.chimneys.map(chimneyDoc) : [], note: '', purpose: '',
+          site: { objType: o.objType || (o.type === 'BD' ? 'bytový dům' : 'provozovna'), pp: o.pp ?? 1, np: o.np ?? 2, roof: o.roof || 'sedlová', owner: '', place: c.type === 'svj' ? `byt ${pick(['pí', 'p.'])} ${pick(SURNAMES)[0]}` : '', hidden: true, notes: chance(0.08) ? [pick(['Spotřebič byl v době kontroly mimo provoz.', 'Zákazník upozorněn na nutnost odstranit hořlavé předměty z okolí komína.'])] : [], noteText: '' },
           payment: { items: kind === 'protokol' ? [{ id: uid('i_'), label: 'Příprava revize spalinové cesty', qty: 1, unit: 'ks', price: 1500 }] : [{ id: uid('i_'), label: 'Kontrola a čištění spalinové cesty', qty: o.chimneys.length, unit: 'ks', price }], method, paid: method !== 'faktura' },
           signature: null, no: num.no, vs: num.vs, customerName: c.name,
           sent: [{ how: c.delivery, at: finished.toISOString() }],
