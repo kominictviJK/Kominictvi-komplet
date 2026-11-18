@@ -103,7 +103,12 @@ async function start() {
     navigator.serviceWorker.register('sw.js').then((reg) => reg.update()).catch(() => {});
     // nová verze aplikace → jednou obnovit obrazovku
     let reloaded = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloaded) return;
+      reloaded = true;
+      // když je zrovna zamčeno, obnoví se až po odemčení (jinak by se Face ID ptalo dvakrát)
+      if (document.querySelector('.lockscreen')) window.__kkPendingReload = true; else location.reload();
+    });
   }
 }
 
