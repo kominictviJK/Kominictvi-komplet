@@ -171,9 +171,22 @@ async function renderNumbering(box, s) {
     </div>
     <div class="note-box" style="margin-top:12px">Číselné řady jsou zamčené – aplikace je vede sama, aby se nerozbily. ${s.rezim.zkusebni ? 'Ve zkušebním režimu se počítá zvlášť; ostrá řada začne od 1/1/2027.' : ''}</div>
     <div class="card" style="margin-top:12px">
+      <h3>Příjmový doklad u zprávy</h3>
+      <div class="chips" style="margin:6px 0">
+        <button class="chip ${!s.dokumenty?.dokladZvlast ? 'on' : ''}" data-doklad="0">Pod zprávou, když se vejde</button>
+        <button class="chip ${s.dokumenty?.dokladZvlast ? 'on' : ''}" data-doklad="1">Vždy na samostatném listu</button>
+      </div>
+      <p class="sub" style="margin:0">${s.dokumenty?.dokladZvlast ? 'Zpráva s jedním komínem bude vždy na jednom listu, doklad s QR na druhém.' : 'U jednoho komínu se aplikace pokusí dát zprávu i doklad na jeden list; když se nevejde, rozdělí to na dva.'}</p>
+    </div>
+    <div class="card" style="margin-top:12px">
       <h3>Formát</h3>
       <p class="sub">Zpráva <b>3/10/2026</b> → VS <b>202610003</b> · Faktura <b>2026/05</b> → VS <b>202605</b> · Nabídka <b>N2026/03</b></p>
     </div>`);
+  box.querySelectorAll('[data-doklad]').forEach((b) => b.addEventListener('click', async () => {
+    await saveSettings({ dokumenty: { dokladZvlast: b.dataset.doklad === '1' } });
+    toast('Uloženo – platí pro nově vytvořená PDF');
+    renderNumbering(box, settings());
+  }));
 }
 
 async function renderData(box, s, rerender) {

@@ -497,13 +497,15 @@ export async function buildVisitPdf(d, customer, s) {
   }
   if (d.kind === 'zprava') {
     // jeden komín: zkusit vše na jeden list (kompaktně)
+    const sep = !!s.dokumenty?.dokladZvlast;
     if (d.chimneys.length === 1) {
-      const c = await renderVisit(d, customer, s, object, false, true);
-      if (c.pages === 1) return c.blob;
+      const c = await renderVisit(d, customer, s, object, false, !sep);
+      if (c.pages === (sep ? 2 : 1)) return c.blob;
+      if (sep) { const c2 = await renderVisit(d, customer, s, object, false, true); if (c2.pages === 2) return c2.blob; }
     }
     // zkusit bez zalomení; když je víc stran, zalomit před „Zjištění“ (jako vzor: 1. strana popis, 2. strana výsledek)
     const a = await renderVisit(d, customer, s, object, false);
-    if (a.pages === 1) return a.blob;
+    if (a.pages === 1 || sep) return a.blob;
     const b = await renderVisit(d, customer, s, object, true);
     return b.pages <= a.pages ? b.blob : a.blob;
   }
@@ -511,6 +513,7 @@ export async function buildVisitPdf(d, customer, s) {
 }
 
 async function renderVisit(d, customer, s, object, breakFindings, compact = false) {
+  const separateReceipt = d.kind === 'zprava' && !!s.dokumenty?.dokladZvlast;
   const isReport = d.kind !== 'doklad';
   const title = isReport ? `Zpráva ${d.no}` : `Doklad ${d.no}`;
   const { doc, f, logo } = await setup(title);
@@ -527,12 +530,24 @@ async function renderVisit(d, customer, s, object, breakFindings, compact = fals
   if (!isReport) parties(ctx, s, customer, null);
   if (isReport) {
     reportBody(ctx, d, customer, object, s, imgs, { breakFindings, compact });
-    // platební část jen na poslední straně, ukotvená dole (pod ✂)
+    // platební část jen na poslední straně, ukotvená dole (pod ✂); volitelně vždy na samostatném listu
     const y0 = ctx.y; ctx.dry = true; receipt(ctx, d, customer, s, imgs.payer, imgs, false); const h = ctx.y - y0; ctx.y = y0; ctx.dry = false;
     const bottom = H - M - 22;
-    if (ctx.y + h > bottom) ctx.page();
-    ctx.y = Math.max(ctx.y, bottom - h);
-    receipt(ctx, d, customer, s, imgs.payer, imgs, false);
+    if (separateReceipt) {
+      ctx.page();
+      ctx.y += 4;
+      ctx.text('PŘÍJMOVÝ POKLADNÍ DOKLAD', M, ctx.y, { font: ctx.f.h, size: 15 });
+      const right = `č. ${d.no}  ze dne ${fmtDate(parseIso(d.date))}`;
+      ctx.text(right, W - M - ctx.width(right, ctx.f.b, 10), ctx.y + 4, { font: ctx.f.b, size: 10 });
+      ctx.y += 20;
+      ctx.text(`k zprávě o provedení čištění a kontroly spalinové cesty č. ${d.no}`, M, ctx.y, { size: 8.5, color: C.muted });
+      ctx.y += 14; ctx.line(M, ctx.y, W - M, { thickness: 1.2, color: C.bronze2 }); ctx.y += 10;
+      receipt(ctx, d, customer, s, imgs.payer, imgs, true);
+    } else {
+      if (ctx.y + h > bottom) ctx.page();
+      ctx.y = Math.max(ctx.y, bottom - h);
+      receipt(ctx, d, customer, s, imgs.payer, imgs, false);
+    }
   } else {
     ctx.sectionTitle('POLOŽKY');
     receipt(ctx, d, customer, s, imgs.payer, imgs, true);
