@@ -14,7 +14,7 @@ import { html, icon, toast, modal, isoDate, parseIso, fmtDate, fmtMoney, monthNa
 import { uid, del } from '../db.js';
 import { hasAi, readReceipt } from '../ai.js';
 import { pending } from '../sync.js';
-import { renderPdf } from '../pdfview.js';
+import { openPdfViewer } from '../pdfview.js';
 
 const state = { tab: 'prehled', month: null, cat: 'vse' };
 
@@ -164,8 +164,8 @@ async function invoiceDetail(id, rerender) {
   });
   if (act === 'preview') {
     if (!inv.pdf) { inv.pdf = await buildInvoicePdf(inv, c, settings(), docs); await put('invoices', inv); }
-    await modal({ title: `Faktura ${inv.no}`, body: '<div id="pvbox"></div>', actions: [{ label: 'Zavřít', value: null }], onOpen: (root) => renderPdf(inv.pdf, root.querySelector('#pvbox')) });
-    return invoiceDetail(id, rerender);
+    openPdfViewer(inv.pdf, `Faktura ${inv.no}`);
+    return;
   }
   if (act === 'send') {
     if (!inv.pdf) { inv.pdf = await buildInvoicePdf(inv, c, settings(), docs); await put('invoices', inv); }

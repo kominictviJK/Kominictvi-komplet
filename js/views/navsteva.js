@@ -1,6 +1,6 @@
 // Návštěva: šablona → formulář zprávy → platba → podpis → hotovo (odeslání)
 import { get, put } from '../db.js';
-import { renderPdf } from '../pdfview.js';
+import { openPdfViewer } from '../pdfview.js';
 import { settings } from '../settings.js';
 import { displayName } from '../customers.js';
 import { FUEL_LABEL } from '../lhuty.js';
@@ -682,9 +682,7 @@ function stepDone(box, ctx) {
     if (ok) { d.sent = [...(d.sent || []), { how: b.dataset.share, at: new Date().toISOString() }]; await saveDraft(d); }
   }));
   box.querySelector('[data-act="preview"]').addEventListener('click', () => {
-    const pv = box.querySelector('#preview');
-    pv.innerHTML = '<div class="card" style="margin-top:12px;padding:8px"><div id="pvbox"></div></div>';
-    renderPdf(d.pdf, pv.querySelector('#pvbox'));
+    openPdfViewer(d.pdf, `${{ doklad: 'Doklad', protokol: 'Protokol' }[d.kind] || 'Zpráva'} č. ${d.no}`);
   });
 }
 

@@ -420,3 +420,13 @@ label.chip input { accent-color: var(--bronze); }
 .pdfpages .pdfpage { display: block; background: #fff; box-shadow: 0 2px 10px rgba(31,26,21,.18); border-radius: 2px; max-width: 100%; height: auto; }
 .pdfpages figcaption { text-align: center; font-size: 12px; color: var(--muted, #6B5F52); margin-top: 4px; }
 .modal .pdfpages { max-height: 65vh; }
+.pdf-overlay { position: fixed; inset: 0; z-index: 900; background: #2A231C; display: flex; flex-direction: column; animation: pdfIn .18s ease-out; }
+.pdf-overlay.closing { opacity: 0; transition: opacity .18s; }
+@keyframes pdfIn { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+.pdf-bar { display: flex; align-items: center; gap: 14px; background: #1F1A15; padding: max(12px, env(safe-area-inset-top)) 18px 10px; color: #fff; }
+.pdf-bar b { font-family: var(--head, Oswald, sans-serif); font-weight: 500; font-size: 18px; }
+.pdf-bar .sub { color: #B8AC9C; font-size: 13px; flex-grow: 1; }
+.pdf-close { width: 52px; height: 52px; border-radius: 50%; border: 0; background: #fff; color: #1F1A15; font-size: 24px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 10px rgba(0,0,0,.3); }
+.pdf-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 12px 30px; transition: transform .1s; }
+.pdfpages.full { max-height: none; overflow: visible; }
+.pdfpages.full figcaption { color: #B8AC9C; }

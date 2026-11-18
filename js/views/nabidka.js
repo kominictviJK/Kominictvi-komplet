@@ -1,6 +1,6 @@
 // Cenová nabídka – položky Práce / Materiál / Doprava, přirážka „jen pro tebe“, fotky, PDF a odeslání
 import { get, put, uid } from '../db.js';
-import { renderPdf } from '../pdfview.js';
+import { openPdfViewer } from '../pdfview.js';
 import { settings } from '../settings.js';
 import { displayName, salutation } from '../customers.js';
 import { createOffer, numberOffer, offerTotals, customerUnitPrice } from '../finance.js';
@@ -148,7 +148,7 @@ function draw(el, o, c, go) {
   };
   el.querySelector('[data-act="preview"]').addEventListener('click', async () => {
     const pdf = await makePdf();
-    await modal({ title: `Nabídka ${o.no}`, body: '<div id="pvbox"></div>', actions: [{ label: 'Zavřít', value: null }], onOpen: (root) => renderPdf(pdf, root.querySelector('#pvbox')) });
+    openPdfViewer(pdf, `Nabídka ${o.no || '(koncept)'}`);
     redraw();
   });
   el.querySelector('[data-act="send"]').addEventListener('click', async () => {

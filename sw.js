@@ -1,6 +1,6 @@
 // Service worker – aplikace funguje i bez internetu.
 // Při nové verzi stačí změnit CACHE; staré soubory se smažou.
-const CACHE = 'kominictvi-v0.9.7';
+const CACHE = 'kominictvi-v0.9.8';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/version.js', 'js/db.js', 'js/ui.js', 'js/settings.js', 'js/seed.js', 'js/numbering.js', 'js/lhuty.js', 'js/customers.js', 'js/catalog.js', 'js/payment.js', 'js/visit.js', 'js/pdf.js', 'js/signature.js', 'js/share.js', 'js/protocol.js', 'js/texts.js', 'js/smsqueue.js', 'js/planning.js', 'js/termin.js', 'js/mapy.js', 'js/finance.js', 'js/google.js', 'js/ai.js', 'js/backup.js', 'js/lock.js', 'js/sync.js', 'js/demo.js', 'js/reporttext.js', 'js/presets.js', 'js/pdfview.js', 'vendor/pdfjs.mjs', 'vendor/pdfjs.worker.mjs', 'apps-script/Code.gs',
