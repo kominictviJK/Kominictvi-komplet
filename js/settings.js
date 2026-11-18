@@ -38,7 +38,7 @@ export const DEFAULTS = {
     pausalPasmo: 1,
     upominkaDny: [0, 14],
   },
-  dokumenty: { dokladZvlast: false },
+  dokumenty: { dokladZvlast: true },
   rezim: {
     zkusebni: true,        // zkušební režim do přepnutí na ostrý provoz
     ostryOd: null,

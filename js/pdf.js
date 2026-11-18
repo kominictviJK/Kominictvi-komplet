@@ -111,7 +111,7 @@ function drawHeader(ctx, { logo, title, sub, no, date, cont, contact }) {
     const web = (f.web || '').trim();
     const qs = 51, qx = W - M - qs;
     let rx = W - M;
-    if (web) { drawQr(ctx, /^https?:/.test(web) ? web : `https://${web}`, qx, top, qs); rx = qx - 10; }
+    if (web && !f.noQr) { drawQr(ctx, /^https?:/.test(web) ? web : `https://${web}`, qx, top, qs); rx = qx - 10; }
     const lines = [[f.znacka || f.jmeno, ctx.f.b, 9.5, C.ink], [`tel. ${f.telefon}`, ctx.f.s, 9, C.ink], [f.email, ctx.f.r, 8.5, C.ink], ...(web ? [[web.replace(/^https?:\/\//, ''), ctx.f.b, 8.5, C.bronze]] : [])];
     lines.forEach(([t, font, size, color], i) => ctx.text(t, rx - ctx.width(t, font, size), top + 3 + i * 12, { font, size, color }));
   } else {
@@ -534,14 +534,13 @@ async function renderVisit(d, customer, s, object, breakFindings, compact = fals
     const y0 = ctx.y; ctx.dry = true; receipt(ctx, d, customer, s, imgs.payer, imgs, false); const h = ctx.y - y0; ctx.y = y0; ctx.dry = false;
     const bottom = H - M - 22;
     if (separateReceipt) {
+      // samostatný list jen s platbou – vlastní hlavička (bez nadpisu zprávy)
+      ctx.header = (c) => drawHeader(c, { logo, title: 'PŘÍJMOVÝ\nPOKLADNÍ DOKLAD', sub: s.firma.dph, contact: { ...s.firma, noQr: true } });
       ctx.page();
-      ctx.y += 4;
-      ctx.text('PŘÍJMOVÝ POKLADNÍ DOKLAD', M, ctx.y, { font: ctx.f.h, size: 15 });
-      const right = `č. ${d.no}  ze dne ${fmtDate(parseIso(d.date))}`;
-      ctx.text(right, W - M - ctx.width(right, ctx.f.b, 10), ctx.y + 4, { font: ctx.f.b, size: 10 });
-      ctx.y += 20;
-      ctx.text(`k zprávě o provedení čištění a kontroly spalinové cesty č. ${d.no}`, M, ctx.y, { size: 8.5, color: C.muted });
-      ctx.y += 14; ctx.line(M, ctx.y, W - M, { thickness: 1.2, color: C.bronze2 }); ctx.y += 10;
+      const cols = [['Číslo dokladu', d.no], ['Datum', fmtDate(parseIso(d.date))], ['K zprávě o čištění a kontrole spalinové cesty', `č. ${d.no}`]];
+      const cw = (W - 2 * M) / 3, t0 = ctx.y;
+      cols.forEach(([l, v], i) => { ctx.text(l, M + i * cw, t0, { size: 7.8, color: C.muted }); ctx.text(v, M + i * cw, t0 + 10, { font: ctx.f.b, size: 10.5 }); });
+      ctx.y = t0 + 30; ctx.line(M, ctx.y, W - M); ctx.y += 10;
       receipt(ctx, d, customer, s, imgs.payer, imgs, true);
     } else {
       if (ctx.y + h > bottom) ctx.page();
