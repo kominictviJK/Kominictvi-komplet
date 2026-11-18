@@ -84,7 +84,7 @@ async function setup(title) {
   return { doc, f, logo };
 }
 
-function drawHeader(ctx, { logo, title, sub, no, date, cont }) {
+function drawHeader(ctx, { logo, title, sub, no, date, cont, contact }) {
   const top = ctx.y;
   ctx.rect(M, top, 46, 51, { color: C.dark });
   const lw = 40, lh = lw * logo.height / logo.width;
@@ -93,12 +93,23 @@ function drawHeader(ctx, { logo, title, sub, no, date, cont }) {
   const lines = title.split('\n');
   lines.forEach((l, i) => ctx.text(l, tx, top + 2 + i * 17, { font: ctx.f.h, size: 14.5 }));
   ctx.text(cont ? `${sub} · pokračování` : sub, tx, top + 6 + lines.length * 17, { size: 8.5, color: C.muted });
-  const bw = 132, bx = W - M - bw;
-  if (!ctx.dry) ctx.p.drawRectangle({ x: bx, y: H - top - 51, width: bw, height: 51, borderColor: C.bronze2, borderWidth: 1.4 });
-  ctx.text(no.label, bx + 9, top + 6, { font: ctx.f.b, size: 7, color: C.bronze });
-  ctx.text(no.value, bx + 9, top + 15, { font: ctx.f.h, size: 13.5 });
-  ctx.text('DATUM', bx + 9, top + 33, { font: ctx.f.b, size: 7, color: C.bronze });
-  ctx.text(date, bx + 9, top + 41, { font: ctx.f.b, size: 9.5 });
+  if (contact) {
+    // vpravo kontakt a QR na web (místo rámečku s číslem – číslo a data jsou pod hlavičkou)
+    const f = contact;
+    const web = (f.web || '').trim();
+    const qs = 51, qx = W - M - qs;
+    let rx = W - M;
+    if (web) { drawQr(ctx, /^https?:/.test(web) ? web : `https://${web}`, qx, top, qs); rx = qx - 10; }
+    const lines = [[f.znacka || f.jmeno, ctx.f.b, 9.5, C.ink], [`tel. ${f.telefon}`, ctx.f.s, 9, C.ink], [f.email, ctx.f.r, 8.5, C.ink], ...(web ? [[web.replace(/^https?:\/\//, ''), ctx.f.b, 8.5, C.bronze]] : [])];
+    lines.forEach(([t, font, size, color], i) => ctx.text(t, rx - ctx.width(t, font, size), top + 3 + i * 12, { font, size, color }));
+  } else {
+    const bw = 132, bx = W - M - bw;
+    if (!ctx.dry) ctx.p.drawRectangle({ x: bx, y: H - top - 51, width: bw, height: 51, borderColor: C.bronze2, borderWidth: 1.4 });
+    ctx.text(no.label, bx + 9, top + 6, { font: ctx.f.b, size: 7, color: C.bronze });
+    ctx.text(no.value, bx + 9, top + 15, { font: ctx.f.h, size: 13.5 });
+    ctx.text('DATUM', bx + 9, top + 33, { font: ctx.f.b, size: 7, color: C.bronze });
+    ctx.text(date, bx + 9, top + 41, { font: ctx.f.b, size: 9.5 });
+  }
   ctx.y = top + 56;
   ctx.line(M, ctx.y, W - M, { thickness: 2, color: C.bronze2 });
   ctx.y += 8;
@@ -481,6 +492,7 @@ async function renderVisit(d, customer, s, object, breakFindings) {
     title: isReport ? 'ZPRÁVA O PROVEDENÍ ČIŠTĚNÍ\nA KONTROLY SPALINOVÉ CESTY' : 'PŘÍJMOVÝ\nPOKLADNÍ DOKLAD',
     sub: isReport ? 'dle vyhlášky č. 34/2016 Sb., příloha č. 3' : s.firma.dph,
     no: { label: isReport ? 'ZPRÁVA Č.' : 'DOKLAD Č.', value: d.no }, date: fmtDate(parseIso(d.date)),
+    contact: isReport ? s.firma : null,
   });
   const ctx = new Ctx(doc, f, header);
   ctx.page();
