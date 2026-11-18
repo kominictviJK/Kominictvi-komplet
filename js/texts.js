@@ -13,6 +13,7 @@ export const TEXTS = [
   { id: 'nezastizen', label: 'Nezastižen', text: '{osloveni} dnes jsem se u Vás zastavil v domluveném termínu kvůli kontrole komínu, ale nepodařilo se mi Vás zastihnout. Ozvěte se mi prosím, rád s Vámi domluvím nový termín. {podpis}' },
   { id: 'jedu', label: 'Jedu k vám', text: '{osloveni} jsem na cestě, budu u Vás asi za {minut} minut. {podpis}' },
   { id: 'zrusit', label: 'Zrušení dne', text: '{osloveni} omlouvám se, z vážných důvodů musím dnešní termín zrušit. Ozvu se Vám s novým termínem. {podpis}' },
+  { id: 'posun', label: 'Změna času v den návštěvy', text: '{osloveni} dnes se mi posouvá program, k Vám dorazím {cas}. Vyhovuje Vám to? {podpis}' },
   { id: 'presun', label: 'Přesun termínu', text: '{osloveni} musím bohužel přesunout náš termín kontroly komínu. Nově Vám mohu nabídnout {den} {cas}. Vyhovuje Vám to? {podpis}' },
 ];
 

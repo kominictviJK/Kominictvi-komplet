@@ -439,3 +439,11 @@ label.chip input { accent-color: var(--bronze); }
 .modal-x { position: sticky; top: -8px; align-self: flex-end; margin: -10px -8px -46px 0; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line, #E4DDD2); background: #fff; color: var(--ink, #1F1A15); font-size: 20px; font-weight: 700; cursor: pointer; z-index: 3; flex-shrink: 0; box-shadow: 0 2px 8px rgba(31,26,21,.12); }
 .modal > h2, .modal > .card-title { padding-right: 52px; }
 .modal .actions { position: sticky; bottom: -22px; background: var(--bg); padding: 10px 0 2px; margin-bottom: -4px; z-index: 2; }
+/* Dnes – přetahování prstem */
+.grip { flex-shrink: 0; margin-left: -6px; padding: 10px 6px; font-size: 24px; line-height: 1; color: var(--faint); touch-action: none; cursor: grab; }
+.visit[data-drag] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.visit.lifted { box-shadow: 0 14px 34px rgba(31,26,21,.28); transform: scale(1.02); cursor: grabbing; }
+.drag-ph { border: 2px dashed var(--bronze-2); border-radius: var(--radius); background: rgba(169,122,31,.07); margin-bottom: 10px; }
+.day-list .drop-only { display: none; }
+.day-list.dragging .drop-only { display: flex; }
+.drop-zone { height: 58px; align-items: center; justify-content: center; border: 2px dashed var(--line-2); border-radius: var(--radius); color: var(--muted); font-size: 15px; margin-bottom: 10px; }

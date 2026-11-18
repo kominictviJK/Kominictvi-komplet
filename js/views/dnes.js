@@ -4,7 +4,8 @@ import { pending } from '../sync.js';
 import { settings } from '../settings.js';
 import { displayName } from '../customers.js';
 import { FUEL_LABEL } from '../lhuty.js';
-import { KIND_LABEL, backToInquiries, moveAppointment, reorder, tomorrow, addDays } from '../planning.js';
+import { KIND_LABEL, BLOCKS, backToInquiries, moveAppointment, reorder, tomorrow, addDays } from '../planning.js';
+import { enableDrag } from '../dragsort.js';
 import { pickTermin } from '../termin.js';
 import { smsQueue } from '../smsqueue.js';
 import { fill, dayPhrase, blockPhrase } from '../texts.js';
@@ -61,12 +62,16 @@ export async function render(el, { go } = {}) {
   const unsent = docs.filter((d) => !d.sent?.length).length;
   const dayOver = visits.length && !planned.length;
 
-  const blocks = [];
+  // Bloky v pořadí dne; prázdné standardní bloky se ukážou jen při přetahování
+  const blocks = BLOCKS.map((name) => ({ name, items: [] }));
   for (const v of visits) {
-    let b = blocks.find((x) => x.name === (v.block || v.time));
-    if (!b) blocks.push((b = { name: v.block || v.time || 'bez času', items: [] }));
+    const name = v.block || v.time || 'bez času';
+    let b = blocks.find((x) => x.name === name);
+    if (!b) blocks.push((b = { name, items: [] }));
     b.items.push(v);
   }
+  const startOf = (name) => (/^\d/.test(name) ? Number(name.split(/[–:-]/)[0]) * 60 : 99 * 60);
+  blocks.sort((a, b) => startOf(a.name) - startOf(b.name));
 
   el.innerHTML = String(html`
     <div class="page-head">
@@ -121,10 +126,14 @@ export async function render(el, { go } = {}) {
 
     ${visits.length ? '' : html`<div class="card empty">Dnes nemáš nic domluveného. Zákazníky na další dny najdeš v Poptávkách a Kalendáři.</div>`}
 
+    <div class="day-list">
     ${blocks.map((b) => html`
-      <div class="block-head">${b.name}</div>
+      <div class="block-head ${b.items.length ? '' : 'drop-only'}" data-block="${b.name}">${b.name}</div>
+      ${b.items.length ? '' : html`<div class="drop-zone drop-only" data-block-zone="${b.name}">Přetáhni sem</div>`}
       ${b.items.map((v) => visitRow(v, visits))}
     `)}
+    </div>
+    ${planned.length > 1 ? html`<p class="sub" style="margin:6px 2px 0">Pořadí změníš tak, že zákazníka podržíš prstem (nebo chytíš za ⠿) a přetáhneš – i do jiného časového bloku.</p>` : ''}
 
     ${planned.length ? html`<div style="display:flex;justify-content:flex-end;margin-top:16px"><button class="btn danger small" data-act="cancel-day">Zrušit dnešní den…</button></div>` : ''}
   `);
@@ -133,15 +142,28 @@ export async function render(el, { go } = {}) {
   fillExtras(el, { visits: active, home: (await homePosition()) || s.lhuty.domovGps }).catch(() => {});
   el.querySelectorAll('[data-start]').forEach((b) => b.addEventListener('click', () => go(`navsteva/zacit/${b.dataset.start}`)));
   el.querySelectorAll('[data-doc]').forEach((b) => b.addEventListener('click', () => go(`navsteva/${b.dataset.doc}`)));
-  el.querySelectorAll('[data-move]').forEach((b) => b.addEventListener('click', async () => {
-    const [id, dir] = b.dataset.move.split('|');
-    const ids = visits.map((v) => v.id);
-    const i = ids.indexOf(id); const j = i + Number(dir);
-    if (j < 0 || j >= ids.length) return;
-    [ids[i], ids[j]] = [ids[j], ids[i]];
-    await reorder(tIso, ids);
+  const list = el.querySelector('.day-list');
+  if (list) enableDrag(list, async ({ order }) => {
+    // order = [{ id, block }] v novém pořadí; změna bloku přenastaví i čas
+    const changed = [];
+    for (const { id, block } of order) {
+      const v = visits.find((x) => x.id === id);
+      if (!v || !block || block === (v.block || v.time)) continue;
+      if (!BLOCKS.includes(block)) continue;
+      const time = `${block.split('–')[0].padStart(2, '0')}:00`;
+      await put('appointments', { ...(await get('appointments', id)), block, time });
+      changed.push({ ...v, block, time });
+    }
+    await reorder(tIso, [...order.map((o) => o.id), ...visits.filter((v) => !order.some((o) => o.id === v.id)).map((v) => v.id)]);
+    if (changed.length) {
+      await smsQueue({
+        title: 'Změna času',
+        note: 'Zákazník má nový časový blok. Pošli mu SMS, nebo okno zavři křížkem, pokud to není potřeba.',
+        items: changed.map((v) => ({ name: displayName(v.customer), phone: v.customer.phones?.[0], body: fill('posun', { cas: blockPhrase(v.block, v.time) }, v.customer) })),
+      });
+    }
     rerender();
-  }));
+  });
   el.querySelectorAll('[data-more]').forEach((b) => b.addEventListener('click', () => moreActions(visits.find((v) => v.id === b.dataset.more), rerender)));
   el.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => onTheWay(visits.find((v) => v.id === b.dataset.go))));
   el.querySelectorAll('[data-remind]').forEach((b) => b.addEventListener('click', async () => {
@@ -169,10 +191,9 @@ export async function render(el, { go } = {}) {
 function visitRow(v, visits) {
   const c = v.customer;
   const a = v.object?.address;
-  const idx = visits.indexOf(v);
   return html`
-    <div class="visit ${v.status === 'done' ? 'done' : v.status === 'missed' ? 'miss' : ''}">
-      ${v.status === 'planned' ? html`<span class="reorder"><button data-move="${v.id}|-1" aria-label="Posunout výš" ${idx === 0 ? 'disabled' : ''}>▲</button><button data-move="${v.id}|1" aria-label="Posunout níž" ${idx === visits.length - 1 ? 'disabled' : ''}>▼</button></span>` : ''}
+    <div class="visit ${v.status === 'done' ? 'done' : v.status === 'missed' ? 'miss' : ''}" data-id="${v.id}" ${v.status === 'planned' ? 'data-drag' : ''}>
+      ${v.status === 'planned' ? html`<span class="grip" aria-label="Přetáhnout">⠿</span>` : ''}
       <span class="time">${v.time || ''}</span>
       <div class="who">
         <b>${displayName(c)} ${c.isNew ? html`<span class="tag new">NOVÝ</span>` : html`<span class="tag">stálý</span>`}</b>
