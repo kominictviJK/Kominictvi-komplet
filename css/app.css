@@ -430,3 +430,4 @@ label.chip input { accent-color: var(--bronze); }
 .pdf-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 4px 12px 30px; transition: transform .1s; }
 .pdfpages.full { max-height: none; overflow: visible; }
 .pdfpages.full figcaption { color: #B8AC9C; }
+[hidden] { display: none !important; }
