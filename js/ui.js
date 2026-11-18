@@ -90,6 +90,41 @@ export function modal({ title, body = '', actions = [{ label: 'Zavřít', value:
       root.innerHTML = '';
       resolve(value);
     }));
+    root.addEventListener('modal-dismiss', () => resolve(null), { once: true });
     if (onOpen) onOpen(root);
   });
+}
+
+// Všechna okna: křížek vpravo nahoře, dvojité ťuknutí vedle okna nebo klávesa Esc okno zavře (jako Zrušit)
+export function closeTopModal() {
+  const root = document.getElementById('modal-root');
+  const m = root?.querySelector('.modal');
+  if (!m) return false;
+  const cancel = m.querySelector('[data-cancel], [data-close]')
+    || [...m.querySelectorAll('.actions button')].find((b) => /^(Zrušit|Zavřít|Ne)$/i.test(b.textContent.trim()));
+  if (cancel) cancel.click();
+  else { root.innerHTML = ''; root.dispatchEvent(new Event('modal-dismiss')); }
+  return true;
+}
+export function installModalClose() {
+  const root = document.getElementById('modal-root');
+  if (!root || root.dataset.closeReady) return;
+  root.dataset.closeReady = '1';
+  const decorate = () => {
+    root.querySelectorAll('.modal').forEach((m) => {
+      if (m.querySelector(':scope > .modal-x')) return;
+      const x = document.createElement('button');
+      x.type = 'button'; x.className = 'modal-x'; x.setAttribute('aria-label', 'Zavřít'); x.textContent = '✕';
+      x.addEventListener('click', (e) => { e.stopPropagation(); closeTopModal(); });
+      m.prepend(x);
+    });
+  };
+  new MutationObserver(decorate).observe(root, { childList: true, subtree: true });
+  let lastTap = 0;
+  root.addEventListener('click', (e) => {
+    if (!e.target.classList?.contains('modal-back')) return;
+    const now = Date.now();
+    if (now - lastTap < 450) { closeTopModal(); lastTap = 0; } else lastTap = now;
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTopModal(); });
 }

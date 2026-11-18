@@ -2,7 +2,7 @@
 import { openDb, requestPersistence, purgeTrash } from './db.js';
 import { loadSettings, settings } from './settings.js';
 import { seedIfEmpty } from './seed.js';
-import { html, icon, toast } from './ui.js';
+import { html, icon, toast, installModalClose } from './ui.js';
 import * as dnes from './views/dnes.js';
 import * as nastaveni from './views/nastaveni.js';
 import * as soon from './views/soon.js';
@@ -83,6 +83,7 @@ async function start() {
   }
   await openDb();
   await loadSettings();
+  installModalClose();
   initLock();
   const seeded = settings().rezim.zkusebni ? await seedIfEmpty() : false;
   purgeTrash().catch(() => {});

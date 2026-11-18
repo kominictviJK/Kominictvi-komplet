@@ -434,3 +434,8 @@ label.chip input { accent-color: var(--bronze); }
 .town-bubble { background: none; border: none; }
 .town-bubble .tb { border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(31,26,21,.35); cursor: pointer; }
 .town-bubble .tb span { background: #fff; color: #1F1A15; font-weight: 800; font-size: 14px; border-radius: 50%; width: calc(100% - 10px); height: calc(100% - 10px); display: flex; align-items: center; justify-content: center; font-family: var(--font); }
+/* křížek u všech oken a tlačítka vždy po ruce */
+.modal { position: relative; }
+.modal-x { position: sticky; top: -8px; align-self: flex-end; margin: -10px -8px -46px 0; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line, #E4DDD2); background: #fff; color: var(--ink, #1F1A15); font-size: 20px; font-weight: 700; cursor: pointer; z-index: 3; flex-shrink: 0; box-shadow: 0 2px 8px rgba(31,26,21,.12); }
+.modal > h2, .modal > .card-title { padding-right: 52px; }
+.modal .actions { position: sticky; bottom: -22px; background: var(--bg); padding: 10px 0 2px; margin-bottom: -4px; z-index: 2; }
