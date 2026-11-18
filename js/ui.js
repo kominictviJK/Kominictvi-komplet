@@ -95,7 +95,7 @@ export function modal({ title, body = '', actions = [{ label: 'Zavřít', value:
   });
 }
 
-// Všechna okna: křížek vpravo nahoře, dvojité ťuknutí vedle okna nebo klávesa Esc okno zavře (jako Zrušit)
+// Všechna okna: křížek vpravo nahoře okno zavře (jako Zrušit); ťuknutí vedle okna nic nedělá, aby se nic nezavřelo omylem
 export function closeTopModal() {
   const root = document.getElementById('modal-root');
   const m = root?.querySelector('.modal');
@@ -120,11 +120,4 @@ export function installModalClose() {
     });
   };
   new MutationObserver(decorate).observe(root, { childList: true, subtree: true });
-  let lastTap = 0;
-  root.addEventListener('click', (e) => {
-    if (!e.target.classList?.contains('modal-back')) return;
-    const now = Date.now();
-    if (now - lastTap < 450) { closeTopModal(); lastTap = 0; } else lastTap = now;
-  });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTopModal(); });
 }
