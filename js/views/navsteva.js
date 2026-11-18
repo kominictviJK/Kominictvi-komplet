@@ -13,7 +13,7 @@ import {
   DETAIL_DEFAULTS, siteFrom,
 } from '../visit.js';
 import { buildVisitPdf } from '../pdf.js';
-import { spdString, qrSvg, paymentTotal, METHODS } from '../payment.js';
+import { spdString, qrSvg, paymentTotal, METHODS, METHOD_LABEL } from '../payment.js';
 import { signaturePad } from '../signature.js';
 import { shareDocument } from '../share.js';
 import { html, raw, icon, toast, modal, fmtMoney, fmtDate, parseIso } from '../ui.js';
@@ -414,9 +414,10 @@ function stepProtocol(box, ctx) {
 // ---------- 2) Platba ----------
 function stepPayment(box, ctx) {
   const { d } = ctx;
+  if (d.payment.method === 'namiste' && !d.vs && !d.no) { reserveNumber(d).then(() => saveDraft(d)).then(() => stepPayment(box, ctx)); return; }
   const s = settings();
   const total = paymentTotal(d.payment.items);
-  const qrText = d.payment.method === 'qr' && d.vs ? spdString({ account: s.firma.ucet, amount: total, vs: d.vs, message: `Kominictvi ${d.no}` }) : null;
+  const qrText = ['qr', 'namiste'].includes(d.payment.method) && d.vs ? spdString({ account: s.firma.ucet, amount: total, vs: d.vs, message: `Kominictvi ${d.no}` }) : null;
   box.innerHTML = String(html`
     <div class="grid c2" style="align-items:start">
       <div class="card">
@@ -441,13 +442,13 @@ function stepPayment(box, ctx) {
         <div class="paymethods">
           ${Object.entries(METHODS).map(([k, l]) => html`<button class="paym ${d.payment.method === k ? 'on' : ''}" data-method="${k}">${l}</button>`)}
         </div>
-        ${d.payment.method === 'qr' ? html`
+        ${['qr', 'namiste'].includes(d.payment.method) ? html`
           <div class="qrbox">
             ${qrText ? raw(qrSvg(qrText, 230)) : html`<div class="note-box">${s.firma.ucet ? 'Číslo účtu nemá správný tvar (např. 2001234567/2010).' : 'QR kód půjde vytvořit, až doplníš číslo účtu v Nastavení → Firma a já.'}</div>`}
-            <div><b style="font-size:24px;font-family:var(--head)">${fmtMoney(total)}</b><br><span class="sub">VS ${d.vs || '—'} · zákazník naskenuje QR v bankovní aplikaci</span></div>
+            <div><b style="font-size:24px;font-family:var(--head)">${fmtMoney(total)}</b><br><span class="sub">VS ${d.vs || '—'} · zaplatí hotově, nebo naskenuje QR v bankovní aplikaci</span></div>
           </div>
           <button class="chip ${d.payment.paid ? 'on' : ''}" data-set="payment.paid" data-v="${JSON.stringify(!d.payment.paid)}" style="margin-top:10px">${d.payment.paid ? '✓ Zaplaceno' : 'Označit jako zaplaceno'}</button>` : ''}
-        ${d.payment.method === 'hotove' ? html`<p class="sub">Hotovost převezmeš a zákazník podepíše příjmový doklad.</p>` : ''}
+
         ${d.payment.method === 'faktura' ? html`<p class="sub">Zákazník nic nepodepisuje. Faktura se připraví ve Financích (etapa 6) a pošle se se zprávou.</p>` : ''}
       </div>
     </div>
@@ -476,8 +477,8 @@ function stepPayment(box, ctx) {
   }));
   box.querySelectorAll('[data-method]').forEach((b) => b.addEventListener('click', async () => {
     d.payment.method = b.dataset.method;
-    d.payment.paid = d.payment.method === 'hotove';
-    if (d.payment.method === 'qr') await reserveNumber(d);
+    d.payment.paid = false;
+    if (d.payment.method === 'namiste') await reserveNumber(d);
     await saveDraft(d); keep();
   }));
   box.querySelector('[data-act="back"]')?.addEventListener('click', () => goStep(ctx, 'formular'));
@@ -504,7 +505,7 @@ function stepSign(box, ctx) {
         <h3 style="margin-bottom:8px">Souhrn</h3>
         ${d.kind === 'protokol' ? html`<div class="kv"><span>Protokol k revizi</span><b>${label(PURPOSES, d.protocol.purpose) || '— určení nevybráno —'}<br><span class="sub">${d.protocol.brand}</span></b></div>` : ''}
         ${d.chimneys.map((k, i) => html`<div class="kv"><span>${d.chimneys.length > 1 ? `${i + 1}) ` : ''}${k.label}</span><span><b>${label(CONCLUSIONS, k.conclusion) || '— závěr nevybrán —'}</b><br><span class="sub">${FUEL_LABEL[k.fuel]} · ${k.appliances.map((a) => (a.kind === 'jiný' ? a.kindOther : a.kind)).join(' + ')}</span></span></div>`)}
-        <div class="kv"><span>Platba</span><b>${fmtMoney(total)} · ${METHODS[d.payment.method] || '—'}</b></div>
+        <div class="kv"><span>Platba</span><b>${fmtMoney(total)} · ${METHOD_LABEL[d.payment.method] || '—'}</b></div>
       </div>
       <div class="card">
         ${needsSign ? html`

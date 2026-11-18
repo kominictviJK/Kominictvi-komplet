@@ -1,7 +1,7 @@
 // Historie – archiv všech dokumentů, kontrola číselné řady, storno a oprava, export
 import { all, put, get } from '../db.js';
 import { displayName, norm } from '../customers.js';
-import { paymentTotal, METHODS } from '../payment.js';
+import { paymentTotal, METHOD_LABEL as METHODS } from '../payment.js';
 import { createDraft, saveDraft, visitDurations } from '../visit.js';
 import { invoiceState } from '../finance.js';
 import { html, toast, modal, parseIso, fmtDate, fmtMoney, monthName } from '../ui.js';

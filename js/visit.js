@@ -90,7 +90,7 @@ export async function createDraft({ customerId, objectId, appointmentId = null, 
         : kind === 'protokol'
           ? [{ id: uid('i_'), label: 'Příprava revize spalinové cesty', qty: 1, unit: 'ks', price: s.cenik.revize }]
           : [{ id: uid('i_'), label: 'Kontrola a čištění spalinové cesty', qty: Math.max(1, chimneys.length), unit: 'ks', price }],
-      method: '', paid: false,
+      method: c.type && c.type !== 'osoba' ? 'faktura' : 'namiste', paid: false,
     },
     signature: null,
   };
@@ -155,7 +155,7 @@ export async function finalize(draft, pdfBuilder) {
   const date = new Date();
   const num = draft.no ? { no: draft.no, vs: draft.vs } : await nextVisitNumber(date, !!draft.trial);
   const doc = { ...draft, status: 'final', no: num.no, vs: num.vs, date: isoDate(date), finalizedAt: date.toISOString() };
-  doc.payment.paid = doc.payment.method === 'hotove' || doc.payment.method === 'qr' ? doc.payment.paid : false;
+  doc.payment.paid = ['hotove', 'qr', 'namiste'].includes(doc.payment.method) ? (doc.payment.method === 'hotove' || doc.payment.paid) : false;
   const customer = await get('customers', doc.customerId);
   doc.customerName = displayName(customer);
   doc.title = doc.kind === 'doklad' ? doc.purpose : doc.kind === 'protokol' ? 'protokol k revizi' : `${doc.chimneys.length} ${doc.chimneys.length === 1 ? 'komín' : doc.chimneys.length < 5 ? 'komíny' : 'komínů'}`;

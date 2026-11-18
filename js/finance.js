@@ -137,12 +137,14 @@ export async function saveRecurring(list) { await saveSettings({ finance: { prav
 // Tržby podle toho, kdy peníze přišly: hotově/QR v den návštěvy, faktury v den úhrady
 export async function revenueByMonth(year) {
   const [docs, invs, exps] = await Promise.all([all('documents'), all('invoices'), all('expenses')]);
-  const months = Array.from({ length: 12 }, () => ({ income: 0, cost: 0, cash: 0, qr: 0, invoice: 0, fuel: 0, material: 0 }));
+  const months = Array.from({ length: 12 }, () => ({ income: 0, cost: 0, onsite: 0, cash: 0, qr: 0, invoice: 0, fuel: 0, material: 0 }));
   for (const d of docs) {
-    if (d.status !== 'final' || d.storno || !['hotove', 'qr'].includes(d.payment?.method)) continue;
+    if (d.status !== 'final' || d.storno || !['hotove', 'qr', 'namiste'].includes(d.payment?.method)) continue;
     const dt = parseIso(d.date); if (dt.getFullYear() !== year) continue;
     const t = paymentTotal(d.payment.items);
-    months[dt.getMonth()].income += t; months[dt.getMonth()][d.payment.method === 'qr' ? 'qr' : 'cash'] += t;
+    months[dt.getMonth()].income += t; months[dt.getMonth()].onsite += t;
+    // přes QR = platba s VS přišla na účet (spárováno z banky), u starších dokladů podle zvolené metody
+    if (d.payment.method === 'qr' || d.payment.bankPaid) months[dt.getMonth()].qr += d.payment.bankPaid?.amount || t; else months[dt.getMonth()].cash += t;
   }
   for (const i of invs) {
     if (i.status !== 'paid' || !i.paidAt) continue;

@@ -176,13 +176,13 @@ export async function fillDemo(today = new Date()) {
         const kind = c.type === 'osoba' && chance(0.035) && o.chimneys[0].fuel === 'plyn' ? 'protokol' : 'zprava';
         const num = visitNo(d);
         const price = c.type === 'osoba' ? pick([450, 500, 500, 500, 600]) : 600;
-        const method = c.type !== 'osoba' ? 'faktura' : chance(0.52) ? 'hotove' : chance(0.9) ? 'qr' : 'faktura';
+        const method = c.type !== 'osoba' ? 'faktura' : chance(0.95) ? 'namiste' : 'faktura';
         const doc = {
           id: uid('d_'), status: 'final', kind, customerId: c.id, objectId: o.id, appointmentId: apt.id, date: isoDate(d),
           createdAt: created.toISOString(), finalizedAt: finished.toISOString(), trial: true, sameAsLast: false, basedOn: null,
           chimneys: kind === 'zprava' ? o.chimneys.map(chimneyDoc) : [], note: '', purpose: '',
           site: { objType: o.objType || (o.type === 'BD' ? 'bytový dům' : 'provozovna'), pp: o.pp ?? 1, np: o.np ?? 2, roof: o.roof || 'sedlová', owner: '', place: c.type === 'svj' ? `byt ${pick(['pí', 'p.'])} ${pick(SURNAMES)[0]}` : '', hidden: true, notes: chance(0.08) ? [pick(['Spotřebič byl v době kontroly mimo provoz.', 'Zákazník upozorněn na nutnost odstranit hořlavé předměty z okolí komína.'])] : [], noteText: '' },
-          payment: { items: kind === 'protokol' ? [{ id: uid('i_'), label: 'Příprava revize spalinové cesty', qty: 1, unit: 'ks', price: 1500 }] : [{ id: uid('i_'), label: 'Kontrola a čištění spalinové cesty', qty: o.chimneys.length, unit: 'ks', price }], method, paid: method !== 'faktura' },
+          payment: { items: kind === 'protokol' ? [{ id: uid('i_'), label: 'Příprava revize spalinové cesty', qty: 1, unit: 'ks', price: 1500 }] : [{ id: uid('i_'), label: 'Kontrola a čištění spalinové cesty', qty: o.chimneys.length, unit: 'ks', price }], method, paid: method !== 'faktura', ...(method === 'namiste' && chance(0.42) ? { bankPaid: { date: isoDate(addDays(d, int(0, 2))), amount: (kind === 'protokol' ? 1500 : price * o.chimneys.length) } } : {}) },
           signature: null, no: num.no, vs: num.vs, customerName: c.name,
           sent: [{ how: c.delivery, at: finished.toISOString() }],
         };
@@ -204,7 +204,7 @@ export async function fillDemo(today = new Date()) {
     if (chance(0.13)) {
       const c = pick(out.customers.filter((x) => x.type === 'osoba' && x.objects[0].chimneys[0].fuel === 'tuha'));
       const m = int(6, 12); const created = at(d, 15, 0); const num = visitNo(d);
-      out.documents.push({ id: uid('d_'), status: 'final', kind: 'doklad', customerId: c.id, objectId: c.objects[0].id, appointmentId: null, date: isoDate(d), createdAt: created.toISOString(), finalizedAt: new Date(created.getTime() + int(70, 130) * 60000).toISOString(), trial: true, chimneys: [], note: '', purpose: 'frézování komínového průduchu', payment: { items: [{ id: uid('i_'), label: 'Frézování komínového průduchu', qty: m, unit: 'm', price: 500 }, { id: uid('i_'), label: 'Doprava', qty: int(10, 40), unit: 'km', price: 7 }], method: chance(0.5) ? 'hotove' : 'qr', paid: true }, signature: null, no: num.no, vs: num.vs, customerName: c.name, title: 'frézování komínového průduchu' });
+      out.documents.push({ id: uid('d_'), status: 'final', kind: 'doklad', customerId: c.id, objectId: c.objects[0].id, appointmentId: null, date: isoDate(d), createdAt: created.toISOString(), finalizedAt: new Date(created.getTime() + int(70, 130) * 60000).toISOString(), trial: true, chimneys: [], note: '', purpose: 'frézování komínového průduchu', payment: { items: [{ id: uid('i_'), label: 'Frézování komínového průduchu', qty: m, unit: 'm', price: 500 }, { id: uid('i_'), label: 'Doprava', qty: int(10, 40), unit: 'km', price: 7 }], method: 'namiste', paid: true, ...(chance(0.4) ? { bankPaid: { date: isoDate(d), amount: m * 500 } } : {}) }, signature: null, no: num.no, vs: num.vs, customerName: c.name, title: 'frézování komínového průduchu' });
     }
     // tankování
     if (dow === 1 || (dow === 4 && chance(0.6))) out.expenses.push({ id: uid('x_'), date: isoDate(d), amount: int(1150, 1950), category: 'tankovani', note: pick(['Benzina Šternberk', 'OMV Uničov', 'Shell Olomouc', 'Orlen Litovel']), photo: null, jobRef: null, returned: false, trial: true, createdAt: d.toISOString() });

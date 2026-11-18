@@ -2,7 +2,7 @@
 import { PDFDocument, rgb, fontkit } from '../vendor/pdf.mjs';
 import { label, CONCLUSIONS, elbowsText } from './catalog.js';
 import { defectsText, recsText } from './visit.js';
-import { paymentTotal, METHODS } from './payment.js';
+import { paymentTotal, METHOD_LABEL } from './payment.js';
 import { FUEL_LABEL } from './lhuty.js';
 import { displayName } from './customers.js';
 import { parseIso, fmtDate } from './ui.js';
@@ -270,7 +270,7 @@ function receipt(ctx, d, customer, s, payerSign, stampImgs, standalone) {
     ctx.y += 12;
   }
   ctx.line(M, ctx.y, W - M); ctx.y += 4;
-  const paid = d.payment.method === 'faktura' ? 'fakturou – faktura bude zaslána zvlášť' : METHODS[d.payment.method] || '';
+  const paid = d.payment.method === 'faktura' ? 'fakturou – faktura bude zaslána zvlášť' : d.payment.method === 'namiste' ? 'hotově nebo převodem (QR)' : (METHOD_LABEL[d.payment.method] || '').toLowerCase();
   ctx.text(`Přijato od: ${displayName(customer)}`, M, ctx.y, { size: 9.5 });
   const tot = `Celkem ${total.toLocaleString('cs-CZ')} Kč`;
   ctx.text(tot, W - M - ctx.width(tot, ctx.f.h, 13), ctx.y - 2, { font: ctx.f.h, size: 13, color: C.bronze });
@@ -284,7 +284,7 @@ function receipt(ctx, d, customer, s, payerSign, stampImgs, standalone) {
     ctx.line(M, top + 40, M + 190, { color: C.muted });
     ctx.text('podpis plátce', M + 95 - ctx.width('podpis plátce', ctx.f.r, 7) / 2, top + 43, { size: 7, color: C.muted });
   }
-  if (d.payment.method === 'qr' && s.firma.ucet) {
+  if (['qr', 'namiste'].includes(d.payment.method) && s.firma.ucet) {
     const spd = spdString({ account: s.firma.ucet, amount: total, vs: d.vs, message: `Kominictvi ${d.no}` });
     if (spd) {
       const qx = M + 222, size = 56;

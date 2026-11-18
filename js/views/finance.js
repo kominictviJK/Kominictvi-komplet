@@ -46,6 +46,7 @@ async function tabOverview(box, go) {
   const months = await revenueByMonth(y);
   const prev = mi > 0 ? months[mi - 1] : (await revenueByMonth(y - 1))[11];
   const cur = months[mi];
+  const dups = await pending('dup');
   const yearIncome = months.reduce((s, m) => s + m.income, 0);
   const yearProfit = months.reduce((s, m) => s + m.income - m.cost, 0);
   const s = settings();
@@ -70,7 +71,11 @@ async function tabOverview(box, go) {
       </div>
       <div class="card">
         <h3 style="margin-bottom:8px">Jak lidé platili · ${monthName(mi)}</h3>
-        ${[['Hotově', cur.cash], ['QR kódem', cur.qr], ['Faktury', cur.invoice]].map(([l, v]) => html`<div class="kv"><span>${l}</span><b>${fmtMoney(v)}</b></div>`)}
+        <div class="kv"><span>Na místě (hotově / QR)</span><b>${fmtMoney(cur.onsite)}</b></div>
+        <div class="kv" style="padding-left:14px"><span class="sub">z toho přes QR na účet</span><span>${fmtMoney(cur.qr)}</span></div>
+        <div class="kv" style="padding-left:14px"><span class="sub">hotově</span><span>${fmtMoney(cur.cash)}</span></div>
+        <div class="kv"><span>Faktury</span><b>${fmtMoney(cur.invoice)}</b></div>
+        ${dups.length ? html`<div class="note-box" style="margin-top:8px"><b>Platba navíc:</b> ${dups.map((q) => q.title).join(' · ')} <button class="btn small" data-dupok>Vyřízeno</button></div>` : ''}
         <a class="note-box ${unpaid.length ? '' : 'ok-box'}" href="#finance-faktury" style="text-decoration:none;margin-top:10px">${unpaid.length ? html`<b>${unpaid.length} ${unpaid.length === 1 ? 'faktura neuhrazena' : 'faktury neuhrazené'}</b><span class="grow"></span>${fmtMoney(unpaid.reduce((s2, i) => s2 + i.total, 0))} →` : '✓ Všechny faktury uhrazené'}</a>
       </div>
     </div>
@@ -90,6 +95,7 @@ async function tabOverview(box, go) {
         ${rec.length ? rec.map((r) => html`<div class="kv"><span>${r.name}<br><small class="sub">${r.every === 'rok' ? 'ročně' : 'měsíčně'} · ${r.day}.</small></span><b>${fmtMoney(r.amount)}</b></div>`) : html`<p class="sub">Žádné. Přidáš je v Nákladech.</p>`}
       </div>
     </div>`);
+  box.querySelector('[data-dupok]')?.addEventListener('click', async () => { for (const q of dups) await del('queue', q.id); toast('Vyřízeno'); tabOverview(box, go); });
 }
 
 // ---------- Faktury a nabídky ----------

@@ -38,4 +38,7 @@ export function qrSvg(text, size = 220) {
 
 export const paymentTotal = (items = []) => items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.price) || 0), 0);
 
-export const METHODS = { hotove: 'Hotově', qr: 'QR kódem', faktura: 'Fakturou' };
+// Platba na místě (hotově nebo QR) a faktura; hotove/qr zůstávají kvůli starším dokladům
+export const METHODS = { namiste: 'Na místě (hotově / QR)', faktura: 'Fakturou' };
+export const METHOD_LABEL = { ...METHODS, namiste: 'Na místě', hotove: 'Hotově', qr: 'QR kódem' };
+export const ON_SITE = ['namiste', 'hotove', 'qr'];

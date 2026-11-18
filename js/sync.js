@@ -90,8 +90,17 @@ export async function applyTransactions(txs) {
     if (t.amount > 0 && t.vs) {
       const inv = invs.find((i) => i.vs === t.vs && i.status === 'open');
       if (inv) { await put('invoices', { ...inv, status: 'paid', paidAt: `${t.date}T12:00:00`, paidAmount: t.amount }); paired++; continue; }
-      const d = docs.find((x) => x.vs === t.vs && x.status === 'final' && !x.payment.paid);
-      if (d) { await put('documents', { ...d, payment: { ...d.payment, paid: true, paidAt: t.date } }); paired++; continue; }
+      const d = docs.find((x) => x.vs === t.vs && x.status === 'final' && !x.storno);
+      if (d) {
+        if (d.payment.bankPaid) {
+          // ke zprávě už platba přišla – pravděpodobně zaplaceno dvakrát
+          await put('queue', { id: uid('dup_'), type: 'dup', source: 'banka', date: t.date, title: `zpráva ${d.no} (${d.customerName || ''}) – ${t.amount} Kč`, amount: t.amount, docId: d.id });
+        } else {
+          await put('documents', { ...d, payment: { ...d.payment, paid: true, paidAt: d.payment.paidAt || t.date, bankPaid: { date: t.date, amount: t.amount } } });
+          d.payment.bankPaid = { date: t.date, amount: t.amount };
+        }
+        paired++; continue;
+      }
     }
     if (t.amount < 0) {
       await put('queue', { id: uid('b_'), type: 'expense', source: 'banka', date: t.date, title: t.counterparty || t.message || 'Platba', amount: Math.abs(t.amount), text: t.message });
