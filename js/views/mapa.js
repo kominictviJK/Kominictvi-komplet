@@ -35,6 +35,22 @@ function pin(color, fuel) {
   });
 }
 
+// bublina obce: počet + prstenec podle lhůt
+const RING_ORDER = ['overdue', 'soon', 'contact', 'planned', 'ok', 'none'];
+const CLUSTER_ZOOM = 13;
+function bubble(group) {
+  const n = group.length;
+  const counts = Object.fromEntries(RING_ORDER.map((k) => [k, group.filter((p) => p.st === k).length]));
+  let acc = 0;
+  const stops = RING_ORDER.filter((k) => counts[k]).map((k) => { const from = acc; acc += (counts[k] / n) * 360; return `${COLORS[k]} ${from}deg ${acc}deg`; }).join(', ');
+  const size = Math.round(Math.min(64, 34 + Math.sqrt(n) * 4));
+  return L.divIcon({
+    className: 'town-bubble',
+    html: `<div class="tb" style="width:${size}px;height:${size}px;background:conic-gradient(${stops})"><span>${n}</span></div>`,
+    iconSize: [size, size], iconAnchor: [size / 2, size / 2],
+  });
+}
+
 function pointInPoly(pt, poly) {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -111,20 +127,40 @@ export async function render(el) {
     && (state.month === null || (state.month === 0 ? p.monthOffset !== null && p.monthOffset <= 0 : p.monthOffset === state.month))
     && (state.area === null || pointInPoly([p.ll[1], p.ll[0]], areas[state.area].polygon)));
 
+  let fitting = false;
   const drawPins = (fit = false) => {
-    layer.clearLayers();
     const vis = visible();
+    if (fit) {
+      fitting = true;
+      if (vis.length) map.fitBounds(L.latLngBounds(vis.map((p) => p.ll)).pad(0.15), { maxZoom: 14, animate: false });
+      else map.setView([49.73, 17.3], 10, { animate: false });
+      fitting = false;
+    }
+    layer.clearLayers();
+    if (map.getZoom() < CLUSTER_ZOOM) {
+      // zdálky: jedna bublina na obec
+      const groups = new Map();
+      for (const p of vis) { const k = p.o.address.city || '—'; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); }
+      for (const [city, g] of groups) {
+        const ll = [g.reduce((a, p) => a + p.ll[0], 0) / g.length, g.reduce((a, p) => a + p.ll[1], 0) / g.length];
+        L.marker(ll, { icon: bubble(g), title: `${city}: ${g.length}` }).addTo(layer).on('click', () => openTown(city, g));
+      }
+      return;
+    }
     for (const p of vis) {
       const m = L.marker(p.ll, { icon: pin(COLORS[p.st], p.fuel) }).addTo(layer);
       const a = p.o.address;
       m.bindPopup(String(html`<div class="pop"><b>${displayName(p.c)}</b><br>${a.street}, ${a.city}<br><span class="tag" style="background:${COLORS[p.st]};color:#fff">${STATE_LABEL[p.st]}${p.next ? ` · ${p.next.getMonth() + 1}/${p.next.getFullYear()}` : ''}</span> ${[...p.fuels].map((f) => FUEL_LABEL[f]).join(', ')}
         <div class="pop-actions"><a class="btn small" href="#karta-${p.c.id}">Karta</a><a class="btn small" href="${mapsRouteLink({ lat: a.lat, lng: a.lng })}" target="_blank" rel="noopener">Navigovat</a>${p.c.phones?.[0] ? html`<a class="btn small" href="tel:${p.c.phones[0].replace(/\s/g, '')}">${fmtPhone(p.c.phones[0])}</a>` : ''}</div></div>`));
     }
-    if (fit) {
-      if (vis.length) map.fitBounds(L.latLngBounds(vis.map((p) => p.ll)).pad(0.15), { maxZoom: 14 });
-      else map.setView([49.73, 17.3], 10);
-    }
   };
+  const openTown = (city, g) => {
+    map.fitBounds(L.latLngBounds(g.map((p) => p.ll)).pad(0.25), { maxZoom: 16, paddingTopLeft: [350, 10] });
+    const c = (k) => g.filter((p) => p.st === k).length;
+    const summary = [c('overdue') ? `${c('overdue')} propadlých` : '', c('soon') ? `${c('soon')} do 30 dní` : '', c('contact') ? `${c('contact')} do 3 měsíců` : '', c('planned') ? `${c('planned')} domluveno` : ''].filter(Boolean).join(' · ');
+    showSelection(el, g, null, rerender, { title: city, summary, invite: `Pozvat do obce ${city}` });
+  };
+  map.on('zoomend', () => { if (!fitting) drawPins(); });
   drawPins(true);
   setTimeout(() => map.invalidateSize(), 100);
 
@@ -136,8 +172,8 @@ export async function render(el) {
     drawPins();
   }));
   el.querySelectorAll('[data-city]').forEach((b) => b.addEventListener('click', () => {
-    const ps = points.filter((p) => p.o.address.city === b.dataset.city);
-    if (ps.length) map.fitBounds(L.latLngBounds(ps.map((p) => p.ll)).pad(0.3), { maxZoom: 15 });
+    const ps = visible().filter((p) => p.o.address.city === b.dataset.city);
+    if (ps.length) openTown(b.dataset.city, ps);
   }));
   el.querySelectorAll('[data-area]').forEach((b) => b.addEventListener('click', () => {
     const i = Number(b.dataset.area);
@@ -193,18 +229,21 @@ function lastMonth(o) {
   return `${['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'][d.getMonth()]} ${d.getFullYear()}`;
 }
 
-function showSelection(el, inside, poly, rerender) {
+function showSelection(el, inside, poly, rerender, town = null) {
   const panel = el.querySelector('#sel-panel');
   panel.hidden = false;
+  const order = ['overdue', 'soon', 'contact', 'none', 'planned', 'ok'];
+  inside = [...inside].sort((a, b) => order.indexOf(a.st) - order.indexOf(b.st) || (a.o.address.street || '').localeCompare(b.o.address.street || '', 'cs', { numeric: true }));
   panel.innerHTML = String(html`
-    <div class="card-title"><h3>Vybráno ${inside.length}</h3><button class="btn small" data-x aria-label="Zavřít">✕</button></div>
+    <div class="card-title"><h3>${town ? html`${town.title} <small class="sub">${inside.length}</small>` : `Vybráno ${inside.length}`}</h3><button class="btn small" data-x aria-label="Zavřít">✕</button></div>
+    ${town?.summary ? html`<p class="sub" style="margin:-4px 0 8px">${town.summary}</p>` : ''}
     <div class="sel-list">${inside.map((p) => html`<a class="row" href="#karta-${p.c.id}"><span class="main"><span class="title" style="font-size:15px">${displayName(p.c)}</span><span class="meta">${p.o.address.street}, ${p.o.address.city}</span></span><span class="tag" style="background:${COLORS[p.st]};color:#fff">${STATE_LABEL[p.st]}</span></a>`)}</div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-      <button class="btn small primary" data-invite ${inside.length ? '' : 'disabled'}>Pozvat na výjezd</button>
-      <button class="btn small soft" data-save>Uložit oblast</button>
+      <button class="btn small primary" data-invite ${inside.length ? '' : 'disabled'}>${town?.invite || 'Pozvat na výjezd'}</button>
+      ${poly ? html`<button class="btn small soft" data-save>Uložit oblast</button>` : ''}
     </div>`);
   panel.querySelector('[data-x]').addEventListener('click', () => { panel.hidden = true; });
-  panel.querySelector('[data-save]').addEventListener('click', async () => {
+  panel.querySelector('[data-save]')?.addEventListener('click', async () => {
     const name = await modal({ title: 'Název oblasti', body: '<input class="input" id="area-name" placeholder="např. Uničovsko – sever">', actions: [{ label: 'Zrušit', value: null }, { label: 'Uložit', kind: 'primary', value: (r) => r.querySelector('#area-name').value.trim() }] });
     if (!name) return;
     await saveSettings({ oblasti: [...(settings().oblasti || []), { name, polygon: poly }] });

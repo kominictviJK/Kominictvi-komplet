@@ -431,3 +431,6 @@ label.chip input { accent-color: var(--bronze); }
 .pdfpages.full { max-height: none; overflow: visible; }
 .pdfpages.full figcaption { color: #B8AC9C; }
 [hidden] { display: none !important; }
+.town-bubble { background: none; border: none; }
+.town-bubble .tb { border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(31,26,21,.35); cursor: pointer; }
+.town-bubble .tb span { background: #fff; color: #1F1A15; font-weight: 800; font-size: 14px; border-radius: 50%; width: calc(100% - 10px); height: calc(100% - 10px); display: flex; align-items: center; justify-content: center; font-family: var(--font); }
