@@ -59,7 +59,7 @@ function makeChimney(fuel, condensing, n) {
   if (fuel === 'plyn') { const [brand, kw] = pick(condensing ? BOILERS_COND : BOILERS_GAS); appliances = [{ kind: 'kotel', brand, kw, floor: '1. NP', placement: [pick(['kotelna', 'kuchyň', 'technická místnost'])] }]; }
   else if (fuel === 'kapalna') appliances = [{ kind: 'kotel', brand: 'Viessmann Vitola', kw: 22, floor: 'PP', placement: ['kotelna'] }];
   else if (n === 1 && chance(0.55)) { const [brand, kw] = pick(BOILERS_SOLID); appliances = [{ kind: 'kotel', brand, kw, floor: chance(0.6) ? 'PP' : '1. NP', placement: ['kotelna'] }]; }
-  else { const [kind, brand, kw] = pick(STOVES); appliances = [{ kind, brand, kw, floor: '1. NP', placement: ['obytná místnost'] }]; }
+  else { const [kind, brand, kw] = pick(STOVES); appliances = [{ kind, brand, kw, floor: '1. NP', placement: ['obývací pokoj'] }]; }
   appliances.forEach((a) => { a.flue = { separate: 'samostatný', opening: chance(0.7), reduction: '', material: condensing ? 'plast' : pick(['ocel', 'ocel', 'nerez']), materialOther: '', diameter: condensing ? '80' : String(pick([120, 130, 150, 160])), length: String(pick([0.5, 1, 1, 1.5, 2])).replace('.', ','), elbows: { e90: int(0, 2), e45: int(0, 1), flex: 0, none: false } }; });
   return {
     id: uid('k_'), label: `Komín ${n}`, fuel, condensing: !!condensing, lastCheck: null, appliances,
@@ -70,7 +70,8 @@ function makeChimney(fuel, condensing, n) {
       bodyMaterial: condensing ? 'keramický systémový komín' : pick(['plné pálené cihly', 'plné pálené cihly', 'CDM cihly', 'komínové tvárnice']), bodyMaterialOther: '',
       flues: fl, flueNo: fl > 1 ? int(1, fl) : 1, otherFlues: fl > 1 ? pick(['větrání', 'nevyužité']) : '', flueSize: '', milled: fuel === 'plyn' && !condensing && chance(0.3),
       founded: pick(['1. PP', '1. NP', '1. NP']), outlet: String(pick([0.8, 1, 1.2, 1.5, 1.6])).replace('.', ','), pathType: 'individuální', layers: condensing ? 'vícevrstvá' : '',
-      air: condensing ? 'koaxiálně z venku (spotřebič typu C)' : pick(['trvalý přívod z venkovního prostředí', 'z interiéru (místnost s oknem)']),
+      air: condensing ? 'koaxiálně z venkovního prostředí (spotřebič typu C)' : pick(['trvalý přívod z venkovního prostředí', 'z interiéru (spotřebič typu B)']),
+      fuelTypes: fuel === 'tuha' ? pick([['dřevo'], ['dřevo', 'uhlí'], ['uhlí'], ['pelety']]) : fuel === 'plyn' ? ['zemní plyn'] : ['topný olej'], termination: pick(['komínovou stříškou', 'komínovou stříškou', '', 'komínovou hlavicí']), damper: fuel === 'tuha' && chance(0.4) ? ['kouřová klapka'] : [], pressure: condensing ? 'přetlakový' : '', moisture: condensing ? 'mokrý provoz' : '', operation: fuel === 'tuha' ? pick(['celoroční', 'celoroční', 'sezónní']) : '',
       cleanFrom: [pick(['z ústí komína ze střechy', 'z ústí komína ze střechy', 'komínovými dvířky na půdě'])], access: [pick(['po žebříku', 'střešním výlezem', 'po střešní lávce'])], ashDoor: pick(['v patě komína', 've sklepě', 'v kotelně']), descOverride: '',
     }; })(),
     revisionNo: chance(0.5) ? `${int(10, 250)}/${int(2015, 2025)}` : '',
@@ -122,7 +123,7 @@ function chimneyDoc(k) {
     fixed: { noDefects: true, camera: false, text: '' }, defects: uniq, defectOther: '',
     deadline: uniq.length ? (conclusion === 'nevyhovuje' ? { mode: 'neprodlene', date: '' } : { mode: 'nestanoven', date: '' }) : { mode: '', date: '' },
     recs: uniq.map((d) => DEFECT_RECS[d]).filter(Boolean), recOther: '', conclusion,
-    ...Object.fromEntries(['bodyMaterial', 'bodyMaterialOther', 'flues', 'flueNo', 'otherFlues', 'flueSize', 'milled', 'founded', 'outlet', 'buildHeight', 'pathType', 'layers', 'air', 'cleanFrom', 'access', 'ashDoor', 'descOverride'].map((key) => [key, structuredClone(k[key])])),
+    ...Object.fromEntries(['fuelTypes', 'termination', 'damper', 'pressure', 'moisture', 'operation', 'bodyMaterial', 'bodyMaterialOther', 'flues', 'flueNo', 'otherFlues', 'flueSize', 'milled', 'founded', 'outlet', 'buildHeight', 'pathType', 'layers', 'air', 'cleanFrom', 'access', 'ashDoor', 'descOverride'].map((key) => [key, structuredClone(k[key])])),
   };
 }
 

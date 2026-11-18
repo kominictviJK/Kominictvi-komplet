@@ -409,3 +409,9 @@ label.chip input { accent-color: var(--bronze); }
 .desc-preview { background: #FBF8F2; border: 1px solid var(--line, #E4DDD2); border-radius: 10px; padding: 10px 14px; margin: 10px 0 6px; }
 .desc-preview ul { margin: 4px 0 0; padding-left: 18px; line-height: 1.45; }
 .desc-preview textarea { width: 100%; font: inherit; }
+.chip.add-custom { border-style: dashed; color: var(--bronze, #8A5F17); background: transparent; }
+.preset-bar { display: flex; gap: 8px; flex-wrap: wrap; margin: -2px 0 10px; }
+.soft-warn { background: #FFF8E6; border-left: 4px solid var(--gold, #D9A63A); }
+.modal .actions { flex-wrap: wrap; }
+.modal .actions.stack { flex-direction: column; align-items: stretch; }
+.modal .actions.stack .btn { justify-content: flex-start; text-align: left; white-space: normal; }

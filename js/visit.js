@@ -17,9 +17,9 @@ function emptyFlue() { return { material: '', materialOther: '', diameter: '', l
 const flueFrom = (f) => ({ ...emptyFlue(), ...structuredClone(f), elbows: { ...emptyFlue().elbows, ...(f.elbows || {}) } });
 
 function applianceFrom(a = {}) {
-  const known = !a.kind || APPLIANCE_KINDS.includes(a.kind);
+  // vlastní druhy spotřebiče se ukládají přímo (z „+ vlastní“)
   return {
-    kind: known ? (a.kind || 'kotel') : 'jiný', kindOther: known ? '' : a.kind, brand: a.brand || '', kw: a.kw || '',
+    kind: a.kind || 'kotel', kindOther: a.kindOther || '', brand: a.brand || '', kw: a.kw || '',
     floor: /pp/i.test(a.floor || '') ? 'PP' : 'NP', placement: a.placement || [], placementOther: '',
     flue: a.flue ? flueFrom(a.flue) : emptyFlue(),
   };
@@ -28,6 +28,7 @@ function applianceFrom(a = {}) {
 export const DETAIL_DEFAULTS = {
   bodyMaterial: '', bodyMaterialOther: '', flues: 1, flueNo: 1, otherFlues: '', flueSize: '', milled: false,
   founded: '', outlet: '', buildHeight: '', pathType: 'individuální', layers: '', air: '', cleanFrom: [], access: [], ashDoor: '', descOverride: '',
+  fuelTypes: [], termination: '', damper: [], pressure: '', moisture: '', operation: '',
 };
 export const DETAIL_KEYS = Object.keys(DETAIL_DEFAULTS);
 const SITE_KEYS = ['objType', 'pp', 'np', 'roof', 'owner', 'place'];
@@ -140,6 +141,25 @@ export function missing(d, customer) {
   if (!d.payment.items.length || d.payment.items.some((i) => !(Number(i.price) >= 0) || !i.label.trim())) out.push('položky platby');
   if (customer.delivery === 'email' && !customer.email) out.push('e-mail zákazníka (zprávy se mají posílat e-mailem)');
   return out;
+}
+
+// Upozornění na věci, které k sobě nesedí (neblokuje, jen se zeptá)
+export const REVISION_NOTE = 'Zpráva o revizi spalinové cesty nebyla předložena – doporučeno ji doložit.';
+export function warnings(d) {
+  const out = [];
+  const nn = (v) => Number(String(v ?? '').replace(',', '.')) || 0;
+  d.chimneys?.forEach((k, i) => {
+    const pre = d.chimneys.length > 1 ? `${i + 1}. komín: ` : '';
+    const lin = k.liner?.material || '';
+    if (k.condensing && (!lin || lin === 'není') && (k.body || []).includes('zděné')) out.push({ text: `${pre}kondenzační kotel a zděný komín bez vložky – opravdu?` });
+    if (k.fuel === 'tuha' && /plast|hliník/.test(lin)) out.push({ text: `${pre}vložka „${lin}“ u tuhých paliv – opravdu?` });
+    if (k.fuel === 'tuha' && k.appliances.some((a) => a.flue?.material === 'plast')) out.push({ text: `${pre}plastový kouřovod u tuhých paliv – opravdu?` });
+    if (nn(k.height) && nn(k.buildHeight) && nn(k.height) > nn(k.buildHeight)) out.push({ text: `${pre}účinná výška je větší než stavební` });
+    if (k.condensing && k.moisture === 'suchý provoz') out.push({ text: `${pre}kondenzační kotel se suchým provozem komínu – opravdu?` });
+    if ((k.revisionMissing || !k.revisionNo) && !(d.site?.notes || []).includes(REVISION_NOTE)) out.push({ text: `${pre}chybí číslo zprávy o revizi`, action: 'revnote', label: 'Přidat poznámku „doložit revizi“' });
+  });
+  const seen = new Set();
+  return out.filter((w) => (w.action ? (seen.has(w.action) ? false : seen.add(w.action)) : true));
 }
 
 export function defectsText(k) {

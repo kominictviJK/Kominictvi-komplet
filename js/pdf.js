@@ -3,7 +3,7 @@ import { PDFDocument, rgb, fontkit } from '../vendor/pdf.mjs';
 import { label, CONCLUSIONS, elbowsText } from './catalog.js';
 import { defectsText, recsText } from './visit.js';
 import { paymentTotal, METHOD_LABEL } from './payment.js';
-import { FUEL_LABEL } from './lhuty.js';
+import { FUEL_LABEL, intervalMonths } from './lhuty.js';
 import { displayName } from './customers.js';
 import { parseIso, fmtDate } from './ui.js';
 import { protocolRows, protocolDefects } from './protocol.js';
@@ -298,6 +298,27 @@ function receipt(ctx, d, customer, s, payerSign, stampImgs, standalone) {
   ctx.y = top + 52;
 }
 
+// Příloha: fotodokumentace (6 fotek na stranu, se štítkem a poznámkou)
+async function photoPages(ctx, doc, photos) {
+  if (!photos.length) return;
+  const cols = 2, cw = (W - 2 * M - 14) / cols, ch = 190;
+  let i = 0;
+  for (const ph of photos) {
+    if (i % 6 === 0) { ctx.page(); ctx.text('FOTODOKUMENTACE', M, ctx.y, { font: ctx.f.h, size: 12, color: C.bronze }); ctx.y += 18; }
+    const col = i % cols, rowY = ctx.y + Math.floor((i % 6) / cols) * (ch + 34);
+    try {
+      const bytes = dataUrlBytes(ph.data);
+      const img = ph.data.startsWith('data:image/png') ? await doc.embedPng(bytes) : await doc.embedJpg(bytes);
+      const sc = Math.min(cw / img.width, ch / img.height);
+      const w = img.width * sc, h = img.height * sc, x = M + col * (cw + 14);
+      ctx.image(img, x + (cw - w) / 2, rowY + (ch - h) / 2, w, h);
+      ctx.text(`${i + 1}. ${ph.tag || 'fotka'}`, x, rowY + ch + 4, { font: ctx.f.b, size: 9 });
+      if (ph.note) ctx.text(ph.note.slice(0, 80), x, rowY + ch + 16, { size: 8, color: C.muted });
+    } catch { /* poškozená fotka se přeskočí */ }
+    i++;
+  }
+}
+
 // ---------- Zpráva dle vzoru přílohy č. 3 (podrobný popis, 2 strany) ----------
 const CONCL_ALL = [['vyhovuje', 'VYHOVUJE'], ['poodstraneni', 'VYHOVUJE PO ODSTRANĚNÍ ZJIŠTĚNÝCH NEDOSTATKŮ'], ['nevyhovuje', 'NEVYHOVUJE']];
 const deadlineTxt = (k) => (k.deadline.mode === 'neprodlene' ? 'neprodleně' : k.deadline.mode === 'datum' && k.deadline.date ? `do ${fmtDate(parseIso(k.deadline.date))}` : 'nebyl stanoven');
@@ -371,7 +392,7 @@ function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false, 
       const nn = k.appliances.length > 1 ? ` ${ai + 1}` : '';
       row(`Umístění${nn}`, placeTxt(ap));
       row(`Spotřebič${nn}`, applianceLine(k, ap));
-      row(`Kouřovod${nn}`, flueLine(ap));
+      row(`Kouřovod${nn}`, flueLine(ap, k));
     });
     row('Komín', chimneyBullets(k, site));
     row('Přívod vzduchu', airLine(k));
@@ -391,9 +412,11 @@ function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false, 
   legal('Zjištěné nedostatky, které nebyly odstraněny na místě', per((k) => { const t = defectsText(k); return t.length ? `${cap1(t.join('; '))}.` : 'Nebyly zjištěny žádné nedostatky.'; }));
   const anyDef = d.chimneys.some((k) => defectsText(k).length);
   legal('Termín odstranění zjištěných nedostatků', anyDef ? per((k) => (defectsText(k).length ? deadlineTxt(k) : '—')) : '—');
+  const nextTxt = (k) => { const x = parseIso(d.date); x.setMonth(x.getMonth() + intervalMonths(k, s)); return `${String(x.getMonth() + 1).padStart(2, '0')}/${x.getFullYear()}`; };
   const recs = d.chimneys.map((k, i) => [i, recsText(k)]).filter(([, r]) => r.length);
   if (recs.length) legal('Další doporučení z hlediska protipožární bezpečnosti a snížení rizika otravy (ČSN 73 4201)', recs.map(([i, r]) => `${many ? `${i + 1}. komín: ` : ''}${cap1(r.join('; '))}.`).join('\n'));
 
+  if (s.dokumenty?.pristiKontrola !== false) legal('Příští kontrola spalinové cesty nejpozději', per(nextTxt));
   // závěr + razítko a podpis
   const same = d.chimneys.every((k) => k.conclusion === d.chimneys[0].conclusion);
   ctx.block(() => {
@@ -492,6 +515,7 @@ export async function buildVisitPdf(d, customer, s) {
     if (ctx.y + h > bottom) ctx.page();
     ctx.y = Math.max(ctx.y, bottom - h);
     receipt(ctx, d, customer, s, imgs.payer, imgs, false);
+    await photoPages(ctx, doc, d.photos || []);
     footers(ctx, s, d.no);
     return new Blob([await doc.save()], { type: 'application/pdf' });
   }

@@ -79,7 +79,7 @@ export function modal({ title, body = '', actions = [{ label: 'Zavřít', value:
         <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
           <h2>${title}</h2>
           <div>${raw(String(body))}</div>
-          <div class="actions">
+          <div class="actions${actions.length > 3 ? " stack" : ""}">
             ${actions.map((a, i) => html`<button type="button" class="btn ${a.kind || ''}" data-i="${i}">${a.label}</button>`)}
           </div>
         </div>

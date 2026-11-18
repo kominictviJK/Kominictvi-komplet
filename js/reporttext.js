@@ -8,8 +8,8 @@ const cap = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
 const join = (arr, sep = '; ') => arr.filter(Boolean).join(sep);
 const floorTxt = (pp, np) => join([n(pp) ? `${n(pp)} PP` : '', n(np) ? `${n(np)} NP` : ''], ', ');
 
-const MAT_GEN = { 'plné pálené cihly': 'z plných pálených cihel', 'CDM cihly': 'z CDM cihel', 'komínové tvárnice': 'z komínových tvárnic', 'keramický systémový komín': 'z keramických systémových dílců', 'nerezový komín': 'z nerezové oceli', kámen: 'z kamene' };
-const LINER_INS = { nerez: 'nerezovou vložkou', keramika: 'keramickou (šamotovou) vložkou', hliník: 'hliníkovou vložkou', plast: 'plastovou vložkou', cihlová: 'cihlovou vložkou' };
+const MAT_GEN = { 'plné pálené cihly': 'z plných pálených cihel', 'CDM cihly': 'z CDM cihel', 'komínové tvárnice': 'z komínových tvárnic', 'keramický systémový komín': 'z keramických systémových dílců', 'nerezový komín': 'z nerezové oceli', kámen: 'z kamene', 'šamotové tvárnice': 'ze šamotových tvárnic', 'pórobetonové tvárnice': 'z pórobetonových tvárnic' };
+const LINER_INS = { 'flexibilní nerez': 'flexibilní nerezovou vložkou', sklolaminát: 'sklolaminátovou vložkou', nerez: 'nerezovou vložkou', keramika: 'keramickou (šamotovou) vložkou', hliník: 'hliníkovou vložkou', plast: 'plastovou vložkou', cihlová: 'cihlovou vložkou' };
 const FUEL_ADJ = { tuha: 'na tuhá paliva', plyn: 'na plyn', kapalna: 'na kapalná paliva' };
 
 export function objectLine(site = {}) {
@@ -25,15 +25,17 @@ const placeTxt = (a) => {
 
 export function applianceLine(k, a) {
   const kind = appKind(a);
-  const what = `${cap(kind)} ${kind === 'kotel' ? FUEL_ADJ[k.fuel] || '' : ''}${kind === 'kotel' && k.condensing ? ' (kondenzační)' : ''}${k.ut && kind === 'kotel' ? ' pro ústřední vytápění' : ''}`.replace(/\s+/g, ' ').trim();
-  return join([what, a.brand, a.kw ? `jmenovitý výkon ${num(a.kw)} kW` : '', kind !== 'kotel' ? `palivo: ${FUEL_LABEL[k.fuel] || ''}` : '']);
+  const isBoiler = /kotel/.test(kind);
+  const types = (k.fuelTypes || []).length ? ` (${k.fuelTypes.join(', ')})` : '';
+  const what = `${cap(kind)} ${isBoiler ? `${FUEL_ADJ[k.fuel] || ''}${types}` : ''}${isBoiler && k.condensing ? ' – kondenzační' : ''}${k.ut && isBoiler ? ' pro ústřední vytápění' : ''}`.replace(/\s+/g, ' ').trim();
+  return join([what, a.brand, a.kw ? `jmenovitý výkon ${num(a.kw)} kW` : '', !isBoiler ? `palivo: ${(k.fuelTypes || []).length ? k.fuelTypes.join(', ') : FUEL_LABEL[k.fuel] || ''}` : '', k.operation ? `provoz ${k.operation}` : '']);
 }
 
-export function flueLine(a) {
+export function flueLine(a, k = {}) {
   const f = a.flue || {};
   const mat = f.material === 'jiný' ? f.materialOther : f.material;
   const opening = f.opening === true ? 'kontrolní otvor: ano' : f.opening === false ? 'kontrolní otvor: ne' : '';
-  return join([f.separate ? cap(f.separate) : '', mat ? `materiál: ${mat}` : '', f.diameter ? `DN ${f.diameter} mm` : '', opening, f.length ? `délka cca ${num(f.length)} m` : '', elbowsText(f.elbows) ? `kolena: ${elbowsText(f.elbows)}` : '', f.reduction ? `redukce ${f.reduction} mm` : '']);
+  return join([f.separate ? cap(f.separate) : '', mat ? `materiál: ${mat}` : '', f.diameter ? `DN ${f.diameter} mm` : '', opening, f.length ? `délka cca ${num(f.length)} m` : '', elbowsText(f.elbows) ? `kolena: ${elbowsText(f.elbows)}` : '', f.reduction ? `redukce ${f.reduction} mm` : '', ...(k.damper || [])]);
 }
 
 // Popis komínu v odrážkách
@@ -47,7 +49,8 @@ export function chimneyBullets(k, site = {}) {
   let s1 = `Komínové těleso${body.length ? ` ${body.join(', ')}` : ''}${matTxt ? `${body.length ? ',' : ''} ${matTxt}` : ''}`;
   s1 += flues > 1 ? `, se ${flues} průduchy` : ', s 1 průduchem';
   if (k.founded) s1 += `, založené ${k.founded === 'na půdě' ? 'na půdě' : `v ${k.founded}`}`;
-  if (k.outlet) s1 += `, vyústěné cca ${num(k.outlet)} m nad ${site.roof ? `${site.roof.replace(/á$/, 'ou')} ` : ''}střechou`;
+  if (k.outlet) s1 += `, vyústěné cca ${num(k.outlet)} m nad ${site.roof ? `${site.roof.replace(/á$/, 'ou').replace(/rovná \(plochá\)/, 'rovnou')} ` : ''}střechou`;
+  if (k.termination) s1 += k.termination === 'bez stříšky' ? ', ústí bez stříšky' : `, ukončené ${k.termination}`;
   out.push(`${s1}.`);
   if (flues > 1) out.push(`Spotřebič je napojen do průduchu č. ${n(k.flueNo) || 1}${k.otherFlues ? `; ostatní průduchy: ${k.otherFlues}` : ''}.`);
   const lin = k.liner || {};
@@ -61,7 +64,8 @@ export function chimneyBullets(k, site = {}) {
   const heights = [bh ? `stavební výška cca ${num(k.buildHeight)} m` : '', eh ? `účinná výška cca ${num(k.height)} m` : '', bh && eh && bh > eh ? `neúčinná výška cca ${num(Math.round((bh - eh) * 10) / 10)} m` : ''].filter(Boolean);
   if (heights.length) out.push(`${cap(heights.join('; '))}.`);
   const layers = k.layers || ((k.body || []).some((b) => /systémov|třívrstv|vícevrstv/.test(b)) ? 'vícevrstvá' : (k.body || []).length ? 'jednovrstvá' : '');
-  if (k.pathType || layers) out.push(`Spalinová cesta je ${join([k.pathType, layers], ', ')}.`);
+  const extra = [k.pressure ? `${k.pressure.replace(/ý$/, 'á')}` : '', k.moisture ? `pro ${k.moisture}` : ''];
+  if (k.pathType || layers || extra.some(Boolean)) out.push(`Spalinová cesta je ${join([k.pathType, layers, ...extra], ', ')}.`);
   return out;
 }
 
@@ -71,7 +75,7 @@ export function accessBullets(k) {
   const out = [];
   if (k.cleanFrom?.length) out.push(`Čištění a kontrola komínového průduchu se provádí ${k.cleanFrom.join(' a ')}${k.access?.length ? `, přístup ${k.access.join(' a ')}` : ''}.`);
   else if (k.access?.length) out.push(`Přístup ke komínu ${k.access.join(' a ')}.`);
-  if (k.ashDoor) out.push(`Vybírací otvor je ${k.ashDoor}.`);
+  if (k.ashDoor) out.push(k.ashDoor === 'není' ? 'Vybírací otvor není.' : `Vybírací otvor je ${k.ashDoor}.`);
   return out;
 }
 

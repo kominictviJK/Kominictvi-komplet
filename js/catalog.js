@@ -1,17 +1,20 @@
 // Volby formuláře zprávy (podle zprávy dle vyhl. č. 34/2016 Sb., příloha č. 3, s úpravami z návrhu)
 export const FUELS = [['tuha', 'Tuhá'], ['plyn', 'Plynná'], ['kapalna', 'Kapalná']];
 
-export const APPLIANCE_KINDS = ['kotel', 'krbová vložka', 'kachlová kamna', 'krbová kamna', 'lokální kamna', 'sporák', 'ohřívač vody', 'jiný'];
+export const APPLIANCE_KINDS = ['kotel', 'kombinovaný kotel', 'krbová vložka', 'krbová kamna', 'kachlová kamna', 'akumulační kamna', 'lokální kamna', 'sporák', 'pec / udírna', 'ohřívač vody', 'jiný'];
 
-export const PLACEMENTS = ['R.D.', 'byt', 'obytná místnost', 'kuchyň', 'kotelna', 'technická místnost', 'jiné'];
+export const PLACEMENTS = ['kotelna', 'technická místnost', 'obývací pokoj', 'kuchyň', 'chodba', 'koupelna', 'sklep', 'půda', 'garáž', 'dílna', 'jiné'];
 
 export const FLOORS = ['NP', 'PP'];
 
 export const BODY_TYPES = ['jednovrstvé', 'zděné', 'vložkované', 'systémové', 'individuální', 'víceprůduchové', 'vymazávané', 'třívrstvé nerezové'];
 
-export const LINERS = ['nerez', 'keramika', 'hliník', 'cihlová', 'plast', 'není', 'jiná'];
+export const LINERS = ['nerez', 'flexibilní nerez', 'keramika', 'hliník', 'plast', 'sklolaminát', 'cihlová', 'není', 'jiná'];
 
-export const FLUES = ['ocel', 'nerez', 'hliník', 'plast', 'zděný', 'plech', 'přímé napojení', 'jiný'];
+export const FLUES = ['ocel', 'smaltovaný', 'nerez', 'flexi', 'hliník', 'plast', 'zděný', 'plech', 'přímé napojení', 'jiný'];
+
+// druh paliva podle skupiny
+export const FUEL_TYPES = { tuha: ['dřevo', 'uhlí', 'koks', 'pelety', 'brikety'], plyn: ['zemní plyn', 'propan (LPG)'], kapalna: ['topný olej'] };
 
 // Neodstraněné nedostatky (13) – dvířka rozdělena na netěsná / poškozená
 export const BASE_DEFECTS = [
@@ -83,17 +86,22 @@ export function elbowsText(e = {}) {
 }
 
 // ---------- Podrobný popis spalinové cesty (vzor dle přílohy č. 3) ----------
-export const OBJECT_TYPES = ['rodinný dům', 'bytový dům', 'chata / chalupa', 'provozovna', 'jiný'];
-export const ROOFS = ['sedlová', 'valbová', 'rovná', 'pultová', 'mansardová', 'stanová'];
-export const BODY_MATERIALS = ['plné pálené cihly', 'CDM cihly', 'komínové tvárnice', 'keramický systémový komín', 'nerezový komín', 'kámen', 'jiný'];
+export const OBJECT_TYPES = ['rodinný dům', 'řadový dům', 'bytový dům', 'bytová jednotka', 'chata / chalupa', 'penzion / ubytování', 'provozovna', 'veřejná budova', 'hospodářská budova'];
+export const ROOFS = ['sedlová', 'valbová', 'polovalbová', 'rovná', 'pultová', 'mansardová', 'stanová'];
+export const BODY_MATERIALS = ['plné pálené cihly', 'CDM cihly', 'komínové tvárnice', 'šamotové tvárnice', 'pórobetonové tvárnice', 'keramický systémový komín', 'nerezový komín', 'kámen'];
 export const FOUNDED = ['1. PP', '1. NP', '2. NP', 'na půdě'];
 export const OTHER_FLUES = ['větrání', 'nevyužité', 'další spotřebiče'];
 export const PATH_TYPES = ['individuální', 'společná'];
 export const LAYERS = ['jednovrstvá', 'vícevrstvá'];
-export const AIR_SUPPLY = ['trvalý přívod z venkovního prostředí', 'z interiéru (místnost s oknem)', 'potrubím z venku přímo ke spotřebiči', 'koaxiálně z venku (spotřebič typu C)'];
-export const CLEAN_FROM = ['z ústí komína ze střechy', 'komínovými dvířky na půdě', 'komínovými dvířky v místnosti', 'z komínové lávky'];
-export const ACCESS = ['po žebříku', 'střešním výlezem', 'po střešní lávce', 'z plošiny', 'bez výstupu na střechu'];
-export const ASH_DOOR = ['v patě komína', 've sklepě', 'v kotelně', 'v 1. NP', 'na půdě'];
+export const AIR_SUPPLY = ['z interiéru (spotřebič typu B)', 'trvalý přívod z venkovního prostředí', 'externí přívod vzduchu potrubím do spotřebiče', 'koaxiálně z venkovního prostředí (spotřebič typu C)', 'odděleně dvoutrubkovým systémem (spotřebič typu C)'];
+export const CLEAN_FROM = ['z ústí komína ze střechy', 'z komínové lávky', 'komínovými dvířky na půdě', 'komínovými dvířky v místnosti', 'ze sklepa (spodem)', 'kontrolním otvorem kouřovodu'];
+export const ACCESS = ['po žebříku', 'z výsuvného žebříku', 'střešním výlezem', 'z vikýře', 'po střešní lávce', 'po střešních stupačkách', 'z plošiny', 'bez výstupu na střechu'];
+export const ASH_DOOR = ['v patě komína', 've sklepě', 'v kotelně', 'v technické místnosti', 'v garáži', 'v 1. NP', 'na půdě', 'není'];
+export const TERMINATION = ['komínovou stříškou', 'komínovou hlavicí', 'rotační hlavicí', 'lapačem jisker', 'bez stříšky'];
+export const DAMPERS = ['kouřová klapka', 'regulátor tahu'];
+export const PRESSURE = ['podtlakový', 'přetlakový'];
+export const MOISTURE = ['suchý provoz', 'mokrý provoz'];
+export const OPERATION = ['celoroční', 'sezónní'];
 export const NOTE_CHIPS = [
   'Spotřebič byl v době kontroly mimo provoz.',
   'Ústí komína kontrolováno kamerou / zdola – výstup na střechu nebyl bezpečný.',
@@ -104,3 +112,10 @@ export const NOTE_CHIPS = [
   'Zákazník odmítl vyčištění kouřovodu.',
 ];
 export const HIDDEN_PARTS_TEXT = 'Vzhledem k celkové dokončenosti objektu není možné provést kontrolu provedení prostupů spalinové cesty vodorovnými a svislými stavebními konstrukcemi, které jsou stavebně uzavřené a vizuálně nepřístupné; tyto části nejsou předmětem této zprávy.';
+
+// Klíče skupin voleb, ke kterým jde přidat vlastní hodnotu (ukládá se v Nastavení → vlastni)
+export const CUSTOM_GROUPS = {
+  objType: 'Typ objektu', roof: 'Střecha', kind: 'Druh spotřebiče', placement: 'Umístění', fuelType: 'Druh paliva', flueMaterial: 'Kouřovod – materiál',
+  body: 'Komínové těleso', bodyMaterial: 'Materiál tělesa', liner: 'Vložka', otherFlues: 'Ostatní průduchy', founded: 'Založení', termination: 'Ukončení komínu',
+  air: 'Přívod vzduchu', cleanFrom: 'Čištění', access: 'Přístup', ashDoor: 'Vybírací otvor', notes: 'Poznámky na zprávu',
+};

@@ -13,7 +13,7 @@ import { lockSupported, lockEnabled, setupLock, disableLock } from '../lock.js';
 import { resetTrialData, goLive, ownTrialCustomers } from '../seed.js';
 import { html, raw, toast, modal, fmtDate } from '../ui.js';
 import { APP_VERSION } from '../version.js';
-import { catalogList } from '../catalog.js';
+import { catalogList, CUSTOM_GROUPS } from '../catalog.js';
 import { uid } from '../db.js';
 
 const SECTIONS = [
@@ -351,7 +351,17 @@ function renderCatalog(box, s) {
     <div class="page-head"><h2>Katalog závad</h2>${custom ? html`<span class="grow"></span><button class="btn small" data-act="cat-reset">Vrátit původní</button>` : ''}</div>
     <div class="note-box">Položky, které ťukáš ve formuláři zprávy. Můžeš je přejmenovat, přeřadit, skrýt nebo přidat vlastní. Změna platí pro nové zprávy, vydané zprávy zůstávají beze změny.</div>
     ${section('defects', 'Neodstraněné nedostatky', 'nový nedostatek, např. Chybí komínová lávka')}
-    ${section('recs', 'Doporučení', 'nové doporučení, např. Osadit komínovou stříšku')}`);
+    ${section('recs', 'Doporučení', 'nové doporučení, např. Osadit komínovou stříšku')}
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><h3>Předvolby komínu</h3><span class="sub">jedním ťuknutím vyplní komín ve formuláři</span></div>
+      ${(s.predvolby || []).length ? s.predvolby.map((pv) => html`<div class="kv"><span style="flex-grow:1"><b>${pv.name}</b></span><button class="btn small danger" data-pvdel="${pv.id}">Smazat</button></div>`) : html`<p class="sub" style="margin:0">Zatím jen vestavěné. Vlastní uložíš ve formuláři tlačítkem „Uložit jako předvolbu“.</p>`}
+    </div>
+    <div class="card" style="margin-top:10px">
+      <div class="card-title"><h3>Vlastní volby ve formuláři</h3><span class="sub">přidané přes „+ vlastní“</span></div>
+      ${Object.entries(s.vlastni || {}).filter(([, v]) => v?.length).length
+        ? Object.entries(s.vlastni || {}).filter(([, v]) => v?.length).map(([key, vals]) => html`<div class="kv" style="align-items:flex-start"><span style="min-width:150px">${CUSTOM_GROUPS[key] || key}</span><span class="chips" style="flex-grow:1">${vals.map((v, i) => html`<button class="chip" data-cvdel="${key}|${i}" title="Smazat">${v} ✕</button>`)}</span></div>`)
+        : html`<p class="sub" style="margin:0">Zatím žádné. Ve formuláři zprávy je u každé řady voleb tlačítko „+ vlastní“.</p>`}
+    </div>`);
   const save = async () => {
     await saveSettings({ katalog: null });
     await saveSettings({ katalog: { defects: lists.defects, recs: lists.recs } });
@@ -367,6 +377,14 @@ function renderCatalog(box, s) {
     const w = b.dataset.add; const v = box.querySelector(`#new-${w}`).value.trim();
     if (!v) { toast('Napiš název položky'); return; }
     lists[w].push({ key: uid('c_'), label: v, hidden: false }); save(); toast('Přidáno');
+  }));
+  box.querySelectorAll('[data-cvdel]').forEach((b) => b.addEventListener('click', async () => {
+    const [key, i] = b.dataset.cvdel.split('|');
+    const vals = [...(settings().vlastni?.[key] || [])]; vals.splice(Number(i), 1);
+    await saveSettings({ vlastni: { [key]: vals } }); toast('Smazáno'); renderCatalog(box, settings());
+  }));
+  box.querySelectorAll('[data-pvdel]').forEach((b) => b.addEventListener('click', async () => {
+    await saveSettings({ predvolby: (settings().predvolby || []).filter((x) => x.id !== b.dataset.pvdel) }); toast('Předvolba smazána'); renderCatalog(box, settings());
   }));
   box.querySelector('[data-act="cat-reset"]')?.addEventListener('click', async () => {
     const ok = await modal({ title: 'Vrátit původní katalog?', body: '<p>Vlastní položky a úpravy se smažou. Vydané zprávy zůstanou beze změny.</p>', actions: [{ label: 'Zrušit', value: false }, { label: 'Vrátit', value: true, kind: 'danger' }] });

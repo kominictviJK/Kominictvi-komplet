@@ -78,6 +78,17 @@ ${text ? `Zpráva:\n${text}` : ''}` });
   return ask(parts, { max: 600 });
 }
 
+// Stará zpráva o kontrole / revizi (od předchozího kominíka) → údaje o komínu a spotřebiči
+export function readOldReport(dataUrl) {
+  return ask([imagePart(dataUrl), { type: 'text', text: `Na fotce je starší zpráva o kontrole a čištění spalinové cesty nebo zpráva o revizi spalinové cesty (Česko). Vytáhni údaje o JEDNÉ spalinové cestě (první uvedené). Vrať POUZE JSON, neznámé hodnoty vynech nebo dej null:
+{"fuel": "tuha|plyn|kapalna", "condensing": true/false, "fuelTypes": ["dřevo","uhlí","koks","pelety","brikety","zemní plyn","propan (LPG)","topný olej"] (jen uvedené),
+"applianceKind": "kotel|kombinovaný kotel|krbová vložka|krbová kamna|kachlová kamna|akumulační kamna|lokální kamna|sporák|pec / udírna|ohřívač vody", "brand": "výrobce a typ", "kw": číslo, "floor": "NP|PP", "placement": ["kotelna","technická místnost","obývací pokoj","kuchyň","chodba","koupelna","sklep","půda","garáž","dílna"],
+"flueMaterial": "ocel|smaltovaný|nerez|flexi|hliník|plast|zděný|plech|přímé napojení", "flueDiameter": "mm jako text", "flueLength": "m jako text s čárkou", "elbows90": číslo, "elbows45": číslo,
+"body": ["jednovrstvé","zděné","vložkované","systémové","individuální","víceprůduchové","vymazávané","třívrstvé nerezové"], "bodyMaterial": "plné pálené cihly|CDM cihly|komínové tvárnice|šamotové tvárnice|pórobetonové tvárnice|keramický systémový komín|nerezový komín|kámen",
+"linerMaterial": "nerez|flexibilní nerez|keramika|hliník|plast|sklolaminát|cihlová|není", "linerDiameter": "mm jako text", "flues": počet průduchů, "flueNo": číslo průduchu se spotřebičem,
+"height": "účinná výška v m jako text s čárkou", "buildHeight": "stavební výška v m", "outlet": "výška ústí nad střechou v m", "revisionNo": "číslo zprávy o revizi spalinové cesty", "lastDate": "RRRR-MM-DD datum provedení", "air": "z interiéru (spotřebič typu B)|trvalý přívod z venkovního prostředí|externí přívod vzduchu potrubím do spotřebiče|koaxiálně z venkovního prostředí (spotřebič typu C)|odděleně dvoutrubkovým systémem (spotřebič typu C)"}` }], { max: 900 });
+}
+
 // Označení fotky z kontroly (fotodokumentace)
 export const PHOTO_TAGS = ['štítek', 'kouřovod', 'závada', 'ústí komína', 'revizní dvířka', 'komínové těleso', 'spotřebič', 'půda', 'střecha', 'jiné'];
 export function tagPhoto(dataUrl) {
