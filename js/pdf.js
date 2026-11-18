@@ -56,6 +56,18 @@ class Ctx {
     const size = opts.size || 10, lh = opts.lh || size * 1.3;
     for (const l of this.wrap(t, maxW, opts.font || this.f.r, size)) { this.text(l, x, this.y, opts); this.y += lh; }
   }
+  // řádkový text s více písmy (popisek + hodnota), zalamuje po slovech
+  rich(parts, x, maxW, { size = 10, lh = size * 1.28 } = {}) {
+    const words = parts.flatMap(({ t, font = this.f.r, color = C.ink, size: sz = size }) => clean(t).split(' ').filter(Boolean).map((w) => ({ w, font, color, sz })));
+    let cx = x;
+    for (const wd of words) {
+      const ww = wd.font.widthOfTextAtSize(wd.w, wd.sz), sp = wd.font.widthOfTextAtSize(' ', wd.sz);
+      if (cx > x && cx + ww > x + maxW) { this.y += lh; cx = x; }
+      this.text(wd.w, cx, this.y + (size - wd.sz) * 0.8, { font: wd.font, size: wd.sz, color: wd.color });
+      cx += ww + sp;
+    }
+    this.y += lh;
+  }
   rect(x, y, w, h, o = {}) { if (!this.dry) this.p.drawRectangle({ x, y: H - y - h, width: w, height: h, ...o }); }
   line(x1, y, x2, o = {}) { if (!this.dry) this.p.drawLine({ start: { x: x1, y: H - y }, end: { x: x2, y: H - y }, thickness: 0.8, color: C.line, ...o }); }
   ellipse(x, y, xs, ys, o = {}) { if (!this.dry) this.p.drawEllipse({ x, y: H - y, xScale: xs, yScale: ys, ...o }); }
@@ -290,17 +302,25 @@ function receipt(ctx, d, customer, s, payerSign, stampImgs, standalone) {
 const CONCL_ALL = [['vyhovuje', 'VYHOVUJE'], ['poodstraneni', 'VYHOVUJE PO ODSTRANĚNÍ ZJIŠTĚNÝCH NEDOSTATKŮ'], ['nevyhovuje', 'NEVYHOVUJE']];
 const deadlineTxt = (k) => (k.deadline.mode === 'neprodlene' ? 'neprodleně' : k.deadline.mode === 'datum' && k.deadline.date ? `do ${fmtDate(parseIso(k.deadline.date))}` : 'nebyl stanoven');
 
-function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false } = {}) {
+function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false, compact = false } = {}) {
   const site = d.site || {};
   const many = d.chimneys.length > 1;
   const full = W - 2 * M;
   const sec = (t) => {
-    ctx.y += 2;
+    ctx.y += compact ? 7 : 2;
     ctx.para(t, M, full, { font: ctx.f.h, size: 9.5, color: C.bronze, lh: 11.5 });
     ctx.line(M, ctx.y, W - M); ctx.y += 4;
   };
   // zákonný popisek (malý) a hodnota pod ním
   const legal = (lbl, val, mark = '') => ctx.block(() => {
+    if (compact) {
+      // jako ve vzoru: popisek a hned za ním hodnota
+      const lines = String(val).split('\n');
+      ctx.rich([{ t: `${lbl}${mark}:`, size: 8.3, color: C.muted }, { t: lines[0], font: ctx.f.s, size: 9.6 }], M, full, { size: 9.6, lh: 11.6 });
+      lines.slice(1).forEach((l) => ctx.para(l, M, full, { font: ctx.f.s, size: 9.6, lh: 11.6 }));
+      ctx.y += 2.5;
+      return;
+    }
     ctx.para(`${lbl}${mark}:`, M, full, { size: 8.2, color: C.muted, lh: 10 });
     ctx.para(val, M, full, { font: ctx.f.s, size: 10, lh: 12.6 });
     ctx.y += 5;
@@ -315,11 +335,11 @@ function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false }
         ctx.y = top;
         for (const b of val) {
           const y0 = ctx.y;
-          ctx.text('–', M + LW, y0, { size: 10 });
-          ctx.para(b, M + LW + 10, full - LW - 10, { size: 10, lh: 12.8 });
+          ctx.text('–', M + LW, y0, { size: compact ? 9.6 : 10 });
+          ctx.para(b, M + LW + 10, full - LW - 10, { size: compact ? 9.6 : 10, lh: compact ? 11.8 : 12.8 });
         }
-      } else { ctx.y = top; ctx.para(val, M + LW, full - LW, { size: 10, lh: 12.8 }); }
-      ctx.y = Math.max(ctx.y, top + 12.8) + 3.5;
+      } else { ctx.y = top; ctx.para(val, M + LW, full - LW, { size: compact ? 9.6 : 10, lh: compact ? 11.8 : 12.8 }); }
+      ctx.y = Math.max(ctx.y, top + 12) + (compact ? 1.8 : 3.5);
     }, 24);
   };
 
@@ -357,7 +377,7 @@ function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false }
     row('Přívod vzduchu', airLine(k));
     row('Přístup', accessBullets(k));
   });
-  if (site.hidden !== false) ctx.block(() => { ctx.y += 2; ctx.para(HIDDEN_PARTS_TEXT, M, full, { size: 8.5, color: C.muted, lh: 10.8 }); ctx.y += 4; }, 30);
+  if (site.hidden !== false) ctx.block(() => { ctx.y += 2; ctx.para(HIDDEN_PARTS_TEXT, M, full, { size: compact ? 8 : 8.5, color: C.muted, lh: compact ? 9.8 : 10.8 }); ctx.y += compact ? 2 : 4; }, 30);
 
   // zjištění
   if (breakFindings) ctx.page();
@@ -378,18 +398,18 @@ function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false }
   const same = d.chimneys.every((k) => k.conclusion === d.chimneys[0].conclusion);
   ctx.block(() => {
     ctx.y += 4;
-    const top = ctx.y, h = same ? 92 : 46 + d.chimneys.length * 15;
+    const top = ctx.y, h = same ? (compact ? 80 : 92) : 46 + d.chimneys.length * 15;
     ctx.rect(M, top, full, h, { color: C.soft });
     ctx.text('ZÁVĚR', M + 14, top + 9, { font: ctx.f.h, size: 11, color: C.bronze });
     ctx.text('Spalinová cesta z hlediska bezpečného provozu:', M + 14, top + 24, { font: ctx.f.s, size: 9.5 });
-    let y = top + 40;
+    let y = top + (compact ? 37 : 40);
     if (same) {
       for (const [v, t] of CONCL_ALL) {
         const on = d.chimneys[0].conclusion === v;
         ctx.text(t, M + 14, y, { font: on ? ctx.f.h : ctx.f.r, size: on ? 12.5 : 9.5, color: on ? C.ink : C.muted });
         if (!on) { const w = ctx.width(t, ctx.f.r, 9.5); ctx.line(M + 13, y + 5, M + 15 + w, { thickness: 0.9, color: C.muted }); }
         if (!on && v === 'nevyhovuje') ctx.text('*)', M + 17 + ctx.width(t, ctx.f.r, 9.5), y - 1, { size: 7, color: C.muted });
-        y += on ? 17 : 13;
+        y += on ? (compact ? 15 : 17) : (compact ? 11.5 : 13);
       }
     } else {
       d.chimneys.forEach((k, i) => { ctx.text(`${i + 1}. komín – ${(CONCL_ALL.find(([v]) => v === k.conclusion) || [, '—'])[1]}`, M + 14, y, { font: ctx.f.h, size: 11 }); y += 15; });
@@ -403,7 +423,10 @@ function reportBody(ctx, d, customer, object, s, imgs, { breakFindings = false }
   const notes = [...(site.notes || []), site.noteText?.trim()].filter(Boolean);
   if (notes.length) ctx.block(() => { ctx.text('Poznámky:', M, ctx.y, { font: ctx.f.b, size: 9 }); ctx.y += 12; notes.forEach((t) => { ctx.text('–', M, ctx.y, { size: 9 }); ctx.para(t, M + 10, full - 10, { size: 9, lh: 11.5 }); }); ctx.y += 3; }, 20);
   const foot = [same ? '*) Nehodící se škrtne.' : '', site.owner?.trim() || site.place?.trim() ? '**) Uvede se pouze v případě, že údaje nejsou shodné s předchozími.' : '', 'Zpráva vydána v souladu s vyhláškou č. 34/2016 Sb., o čištění, kontrole a revizi spalinové cesty, příloha č. 3.'].filter(Boolean);
-  ctx.block(() => { foot.forEach((t) => { ctx.text(t, M, ctx.y, { size: 7.5, color: C.muted }); ctx.y += 9.5; }); ctx.y += 4; }, 10);
+  ctx.block(() => {
+    if (compact) { ctx.para(foot.join('  '), M, full, { size: 7.2, color: C.muted, lh: 8.8 }); ctx.y += 2; return; }
+    foot.forEach((t) => { ctx.text(t, M, ctx.y, { size: 7.5, color: C.muted }); ctx.y += 9.5; }); ctx.y += 4;
+  }, 10);
 }
 const cap1 = (t) => (t ? t[0].toUpperCase() + t.slice(1) : t);
 const isoOf = (iso) => { const x = new Date(iso); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
@@ -473,6 +496,11 @@ export async function buildVisitPdf(d, customer, s) {
     return new Blob([await doc.save()], { type: 'application/pdf' });
   }
   if (d.kind === 'zprava') {
+    // jeden komín: zkusit vše na jeden list (kompaktně)
+    if (d.chimneys.length === 1) {
+      const c = await renderVisit(d, customer, s, object, false, true);
+      if (c.pages === 1) return c.blob;
+    }
     // zkusit bez zalomení; když je víc stran, zalomit před „Zjištění“ (jako vzor: 1. strana popis, 2. strana výsledek)
     const a = await renderVisit(d, customer, s, object, false);
     if (a.pages === 1) return a.blob;
@@ -482,7 +510,7 @@ export async function buildVisitPdf(d, customer, s) {
   return (await renderVisit(d, customer, s, object, false)).blob;
 }
 
-async function renderVisit(d, customer, s, object, breakFindings) {
+async function renderVisit(d, customer, s, object, breakFindings, compact = false) {
   const isReport = d.kind !== 'doklad';
   const title = isReport ? `Zpráva ${d.no}` : `Doklad ${d.no}`;
   const { doc, f, logo } = await setup(title);
@@ -498,7 +526,7 @@ async function renderVisit(d, customer, s, object, breakFindings) {
   ctx.page();
   if (!isReport) parties(ctx, s, customer, null);
   if (isReport) {
-    reportBody(ctx, d, customer, object, s, imgs, { breakFindings });
+    reportBody(ctx, d, customer, object, s, imgs, { breakFindings, compact });
     // platební část jen na poslední straně, ukotvená dole (pod ✂)
     const y0 = ctx.y; ctx.dry = true; receipt(ctx, d, customer, s, imgs.payer, imgs, false); const h = ctx.y - y0; ctx.y = y0; ctx.dry = false;
     const bottom = H - M - 22;
